@@ -5,3 +5,4 @@ lib/python3.8/site-packages/
 bin
 share
 static/.DS_Store
+.DS_Store

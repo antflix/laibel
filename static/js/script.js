@@ -49,7 +49,15 @@ document.addEventListener("DOMContentLoaded", function () {
   const nextImageBtn = document.getElementById("next-image-btn");
   const imageInfoSpan = document.getElementById("image-info");
   const deleteImageBtn = document.getElementById("delete-image-btn");
+  const loadModelBtn = document.getElementById("load-model-btn"); // Added
   const aiAssistBtn = document.getElementById("ai-assist-btn"); // AI Assist button
+
+  // --- Additions for On-Demand Model Loading ---
+  // State variable for model loading status
+  // Ensure LAIBEL_CONFIG is defined (e.g., via script tag in HTML)
+  let isModelLoaded = window.LAIBEL_CONFIG?.modelInitiallyLoaded || false;
+  let isModelLoading = false; // Track if loading is currently in progress
+  let modelLoadError = window.LAIBEL_CONFIG?.modelLoadError || null; // Store potential initial error
 
   // --- Event Listeners ---
   drawBoxBtn.addEventListener("click", () => switchTool("draw"));
@@ -58,12 +66,16 @@ document.addEventListener("DOMContentLoaded", function () {
     imageUpload.click();
   });
   prevImageBtn.addEventListener("click", () => {
-    if (currentImageIndex > 0 && !isPredicting) {
+    if (currentImageIndex > 0 && !isPredicting && !isModelLoading) {
       loadImageData(currentImageIndex - 1);
     }
   });
   nextImageBtn.addEventListener("click", () => {
-    if (currentImageIndex < imageData.length - 1 && !isPredicting) {
+    if (
+      currentImageIndex < imageData.length - 1 &&
+      !isPredicting &&
+      !isModelLoading
+    ) {
       loadImageData(currentImageIndex + 1);
     }
   });
@@ -76,6 +88,7 @@ document.addEventListener("DOMContentLoaded", function () {
   saveBtn.addEventListener("click", saveJsonAnnotations); // Export JSON
   exportYoloBtn.addEventListener("click", exportYoloAnnotations);
   deleteImageBtn.addEventListener("click", deleteCurrentImage);
+  loadModelBtn.addEventListener("click", handleLoadModel); // Added listener
   aiAssistBtn.addEventListener("click", handleAIAssist); // AI Assist listener
 
   // --- Keyboard Shortcut Listener ---
@@ -290,15 +303,44 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("Canvas and state cleared.");
   }
 
+  // Initial setup for model buttons based on backend state passed via window.LAIBEL_CONFIG
+  function initializeModelButtons() {
+    if (isModelLoaded) {
+      aiAssistBtn.disabled = true; // Disabled until an image is loaded
+      loadModelBtn.disabled = true;
+      loadModelBtn.textContent = "Model Loaded";
+      console.log("Model was already loaded on page initialization.");
+    } else {
+      aiAssistBtn.disabled = true; // AI assist always disabled initially
+      loadModelBtn.disabled = false; // Enable load button
+      loadModelBtn.textContent = "Load AI Model";
+      if (modelLoadError) {
+        console.error("Initial model state error:", modelLoadError);
+        // You might want to visually indicate the error state here
+        // alert(`Initial AI Model Error: ${modelLoadError}`); // Example: Alert user
+      }
+    }
+    // Call updateNavigationUI to synchronize all button states correctly
+    updateNavigationUI();
+  }
+
+  // --- Modify updateNavigationUI to include AI button state based on model load status ---
   function updateNavigationUI() {
     const hasImages = imageData.length > 0;
     const hasCurrentIndex =
       currentImageIndex >= 0 && currentImageIndex < imageData.length;
 
     // Enable/disable delete button
-    deleteImageBtn.disabled = !hasCurrentIndex || isPredicting;
-    // Enable/disable AI Assist button
-    aiAssistBtn.disabled = !hasCurrentIndex || isPredicting;
+    deleteImageBtn.disabled =
+      !hasCurrentIndex || isPredicting || isModelLoading;
+
+    // --- AI Assist Button Logic ---
+    // Disabled if: No image loaded OR prediction in progress OR model is currently loading OR model is NOT loaded
+    aiAssistBtn.disabled =
+      !hasCurrentIndex || isPredicting || isModelLoading || !isModelLoaded;
+    // --- Load Model Button Logic ---
+    // Disabled if: Model is already loaded OR model loading is in progress
+    loadModelBtn.disabled = isModelLoaded || isModelLoading;
 
     if (!hasImages) {
       imageInfoSpan.textContent = "No images loaded";
@@ -306,19 +348,21 @@ document.addEventListener("DOMContentLoaded", function () {
       nextImageBtn.disabled = true;
     } else {
       if (hasCurrentIndex) {
-        // Use ellipsis for long filenames if needed (CSS should handle this too)
         const displayFilename =
           imageData[currentImageIndex].filename.length > 25
             ? imageData[currentImageIndex].filename.substring(0, 22) + "..."
             : imageData[currentImageIndex].filename;
         imageInfoSpan.textContent = `${currentImageIndex + 1} / ${imageData.length} (${displayFilename})`;
       } else {
-        imageInfoSpan.textContent = `0 / ${imageData.length}`; // Show 0 if index is invalid but images exist
+        imageInfoSpan.textContent = `0 / ${imageData.length}`;
       }
-      // Enable/disable navigation buttons based on index and prediction state
-      prevImageBtn.disabled = currentImageIndex <= 0 || isPredicting;
+      // Enable/disable navigation buttons based on index and prediction/loading state
+      prevImageBtn.disabled =
+        currentImageIndex <= 0 || isPredicting || isModelLoading;
       nextImageBtn.disabled =
-        currentImageIndex >= imageData.length - 1 || isPredicting;
+        currentImageIndex >= imageData.length - 1 ||
+        isPredicting ||
+        isModelLoading;
     }
 
     // Update AI Assist button text if predicting
@@ -327,6 +371,19 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       aiAssistBtn.textContent = "AI Assist";
     }
+
+    // Update Load Model button text based on state
+    if (isModelLoading) {
+      loadModelBtn.textContent = "Loading Model...";
+    } else if (isModelLoaded) {
+      loadModelBtn.textContent = "Model Loaded";
+    } else {
+      loadModelBtn.textContent = "Load AI Model";
+    }
+
+    // Ensure tool buttons are disabled during prediction/loading
+    drawBoxBtn.disabled = isPredicting || isModelLoading;
+    editBoxBtn.disabled = isPredicting || isModelLoading;
   }
 
   // --- Canvas Event Handlers ---
@@ -377,7 +434,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleMouseDown(e) {
-    if (!image || isPredicting) return; // Don't interact if no image or predicting
+    // Ignore interactions if predicting or model loading
+    if (!image || isPredicting || isModelLoading) return;
     const pos = getMousePos(e);
     startX = pos.x;
     startY = pos.y;
@@ -405,7 +463,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleMouseMove(e) {
-    if (!image || isPredicting) return; // Ignore if no image or predicting
+    // Ignore interactions if predicting or model loading
+    if (!image || isPredicting || isModelLoading) return;
     const pos = getMousePos(e);
     const currentX = pos.x;
     const currentY = pos.y;
@@ -494,7 +553,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleMouseUp(e) {
-    if (isPredicting) return; // Ignore if predicting
+    // Ignore if predicting or model loading
+    if (isPredicting || isModelLoading) return;
 
     if (currentTool === "draw" && isDrawing) {
       isDrawing = false;
@@ -565,6 +625,9 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleMouseLeave(e) {
+    // Ignore if predicting or model loading
+    if (isPredicting || isModelLoading) return;
+
     // If drawing or resizing was in progress when mouse left canvas, finalize it
     if (isDrawing) {
       isDrawing = false;
@@ -967,15 +1030,71 @@ document.addEventListener("DOMContentLoaded", function () {
     redrawCanvas(); // Remove the box from the canvas
   }
 
-  // --- AI Assist Functionality ---
+  // --- Function to handle loading the AI model ---
+  async function handleLoadModel() {
+    if (isModelLoaded || isModelLoading) {
+      console.log("Model already loaded or loading in progress.");
+      return;
+    }
+
+    console.log("Requesting AI model load...");
+    isModelLoading = true;
+    updateNavigationUI(); // Update buttons state (disable load, show loading text)
+
+    try {
+      const response = await fetch("/load_model", { method: "POST" });
+
+      // Check response status before parsing JSON
+      if (!response.ok) {
+        let errorMsg = `HTTP error ${response.status}`;
+        try {
+          // Try to get a more specific error from the JSON body
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (jsonError) {
+          // If response is not JSON or parsing fails, use the HTTP status text
+          errorMsg += `: ${response.statusText || "Failed to load model"}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log("AI Model loaded successfully:", result.message || "");
+        isModelLoaded = true;
+        modelLoadError = null; // Clear any previous error
+        alert("AI Model loaded successfully!");
+      } else {
+        throw new Error(result.error || "Failed to load model. Unknown error.");
+      }
+    } catch (error) {
+      console.error("Failed to load AI model:", error);
+      isModelLoaded = false;
+      modelLoadError = error.message; // Store the error message
+      alert(`Error loading AI Model: ${error.message}`);
+    } finally {
+      isModelLoading = false; // Reset loading flag
+      // Update all button states based on the outcome
+      updateNavigationUI();
+    }
+  }
+
+  // --- Modify handleAIAssist to check isModelLoaded flag first ---
   async function handleAIAssist() {
+    if (!isModelLoaded) {
+      alert("AI Model is not loaded. Please click 'Load AI Model' first.");
+      return;
+    }
+
     if (
       currentImageIndex === -1 ||
       !imageData[currentImageIndex] ||
-      isPredicting
+      isPredicting || // Already predicting
+      isModelLoading // Model is loading
     ) {
       console.log(
-        "AI Assist cannot run: No image loaded or prediction in progress.",
+        "AI Assist cannot run: No image, prediction/loading in progress.",
       );
       return;
     }
@@ -985,15 +1104,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // --- UI updates: Indicate loading ---
     isPredicting = true;
-    aiAssistBtn.disabled = true;
-    aiAssistBtn.textContent = "Predicting...";
-    // Disable other actions that might interfere
-    uploadBtn.disabled = true;
-    prevImageBtn.disabled = true;
-    nextImageBtn.disabled = true;
-    deleteImageBtn.disabled = true;
-    drawBoxBtn.disabled = true; // Maybe allow switching tools? For now, disable.
-    editBoxBtn.disabled = true;
+    updateNavigationUI(); // Update button states for prediction
     // Consider adding a loading overlay or spinner to the canvas
     canvas.style.opacity = "0.7";
     canvas.style.cursor = "wait";
@@ -1012,9 +1123,16 @@ document.addEventListener("DOMContentLoaded", function () {
         let errorMsg = `HTTP error ${response.status}`;
         try {
           const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg;
+          errorMsg = errorData.error || errorMsg; // Use backend error if available
         } catch (e) {
           /* Ignore if response body is not JSON */
+        }
+        // Check for specific 503 error (model not loaded server-side)
+        if (response.status === 503) {
+          errorMsg +=
+            ". The AI model might not be loaded on the server. Try loading it again.";
+          // Reset frontend model state if server says it's not loaded
+          isModelLoaded = false;
         }
         throw new Error(errorMsg);
       }
@@ -1028,6 +1146,7 @@ document.addEventListener("DOMContentLoaded", function () {
         );
         addPredictionsToCanvas(result.boxes);
       } else {
+        // If backend reports success:false, use its error message
         throw new Error(
           result.error || "Prediction failed: No boxes found or backend error.",
         );
@@ -1037,19 +1156,11 @@ document.addEventListener("DOMContentLoaded", function () {
       alert(`AI Assist Error: ${error.message}`);
     } finally {
       // --- UI updates: Restore state ---
-      isPredicting = false;
-      aiAssistBtn.disabled = false;
-      aiAssistBtn.textContent = "AI Assist";
-      uploadBtn.disabled = false;
-      // Re-enable nav buttons based on current index
-      prevImageBtn.disabled = currentImageIndex <= 0;
-      nextImageBtn.disabled = currentImageIndex >= imageData.length - 1;
-      deleteImageBtn.disabled = currentImageIndex < 0; // Re-enable if image exists
-      drawBoxBtn.disabled = false;
-      editBoxBtn.disabled = false;
+      isPredicting = false; // Reset prediction flag
+      updateNavigationUI(); // Update all button states correctly
       canvas.style.opacity = "1";
-      canvas.style.cursor = currentTool === "draw" ? "crosshair" : "default"; // Restore cursor based on tool
-      updateNavigationUI(); // Ensure all states are correct
+      // Restore cursor based on the selected tool
+      canvas.style.cursor = currentTool === "draw" ? "crosshair" : "default";
     }
   }
 
@@ -1086,7 +1197,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // User can add the label manually later if desired.
       if (!labels.some((l) => l.name === pred.label)) {
         console.log(
-          `Predicted label "${pred.label}" not in user-defined labels. Using directly.`,
+          `Predicted label "${pred.label}" not in user-defined labels. Using directly. Consider adding it.`,
         );
         // Optionally: add the label automatically
         // const color = getRandomColor();
@@ -1391,10 +1502,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (
       currentImageIndex < 0 ||
       currentImageIndex >= imageData.length ||
-      isPredicting
+      isPredicting ||
+      isModelLoading // Also check model loading
     ) {
       console.warn(
-        "Delete button clicked but no valid image selected or prediction in progress.",
+        "Delete button clicked but no valid image selected or operation in progress.",
       );
       return;
     }
@@ -1449,7 +1561,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // --- Keyboard Shortcut Handler Function ---
+  // --- Modify handleKeyDown to prevent shortcuts during model loading ---
   function handleKeyDown(event) {
     // Ignore shortcuts if focus is on an input field or textarea
     const activeElement = document.activeElement;
@@ -1469,36 +1581,30 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Ignore if prediction is in progress
-    if (isPredicting) {
-      console.log("Keydown ignored: Prediction in progress.");
+    // Ignore if prediction or model loading is in progress
+    if (isPredicting || isModelLoading) {
+      console.log("Keydown ignored: Operation in progress.");
       return;
     }
 
     switch (event.key.toLowerCase()) {
-      case "f": // Next image (like 'forward')
-        // Check if the button itself is enabled
+      case "f": // Next image
         if (!nextImageBtn.disabled) {
           console.log("Shortcut 'f' pressed: Navigating next");
-          nextImageBtn.click(); // Simulate click
-          event.preventDefault(); // Prevent potential default browser actions for 'f'
+          nextImageBtn.click();
+          event.preventDefault();
         } else {
-          console.log(
-            "Shortcut 'f' pressed: Navigation disabled (at end or predicting)",
-          );
+          console.log("Shortcut 'f' pressed: Navigation disabled");
         }
         break;
 
-      case "r": // Previous image (like arrow left often used in viewers, or 'd' on qwerty) - Changed from 'r'
-        // Check if the button itself is enabled
+      case "r": // Previous image
         if (!prevImageBtn.disabled) {
           console.log("Shortcut 'r' pressed: Navigating previous");
-          prevImageBtn.click(); // Simulate click
-          event.preventDefault(); // Prevent potential default browser actions for 'd'
+          prevImageBtn.click();
+          event.preventDefault();
         } else {
-          console.log(
-            "Shortcut 'r' pressed: Navigation disabled (at start or predicting)",
-          );
+          console.log("Shortcut 'r' pressed: Navigation disabled");
         }
         break;
 
@@ -1514,6 +1620,22 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!editBoxBtn.disabled) {
           console.log("Shortcut 'e' pressed: Switching to Edit tool");
           switchTool("edit");
+          event.preventDefault();
+        }
+        break;
+
+      case "l": // Shortcut to Load Model
+        if (!loadModelBtn.disabled) {
+          console.log("Shortcut 'l' pressed: Loading model");
+          loadModelBtn.click();
+          event.preventDefault();
+        }
+        break;
+
+      case "a": // Shortcut for AI Assist
+        if (!aiAssistBtn.disabled) {
+          console.log("Shortcut 'a' pressed: AI Assist");
+          aiAssistBtn.click();
           event.preventDefault();
         }
         break;
@@ -1538,7 +1660,7 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("Initializing Laibel Application...");
     updateLabelsList(); // Setup labels sidebar (might be empty)
     updateAnnotationsList(); // Setup annotations sidebar (will be empty)
-    updateNavigationUI(); // Setup initial state of nav buttons/info
+    initializeModelButtons(); // Setup initial state for model buttons (includes call to updateNavigationUI)
     switchTool("draw"); // Set default tool
     redrawCanvas(); // Draw initial placeholder
     console.log("Initialization complete.");
@@ -1546,4 +1668,4 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Run initialization
   initializeApp();
-});
+}); // End DOMContentLoaded

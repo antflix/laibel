@@ -8,6 +8,14 @@
             rel="stylesheet"
             href="{{ url_for('static', filename='css/style.css') }}"
         />
+        <!-- Pass backend state to JavaScript -->
+        <script>
+            // Define global JS variables based on Flask template variables
+            window.LAIBEL_CONFIG = {
+                modelInitiallyLoaded: {{ model_loaded | tojson }}, // True if loaded on initial page load (unlikely now)
+                modelLoadError: {{ model_error | tojson }} // Pass initial error, if any
+            };
+        </script>
     </head>
     <body>
         <div class="container">
@@ -60,6 +68,11 @@
                                 Upload Images
                             </button>
 
+                            <!-- Add Load Model Button -->
+                            <button id="load-model-btn" class="btn">
+                                Load AI Model
+                            </button>
+                            <!-- AI Assist Button: Initially disabled -->
                             <button id="ai-assist-btn" class="btn" disabled>
                                 AI Assist
                             </button>

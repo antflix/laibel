@@ -12,8 +12,10 @@
         <script>
             // Define global JS variables based on Flask template variables
             window.LAIBEL_CONFIG = {
-                modelInitiallyLoaded: {{ model_loaded | tojson }}, // True if loaded on initial page load (unlikely now)
-                modelLoadError: {{ model_error | tojson }} // Pass initial error, if any
+                yoloModelInitiallyLoaded: {{ yolo_model_loaded | tojson }},
+                yoloModelLoadError: {{ yolo_model_error | tojson }},
+                yoloeModelInitiallyLoaded: {{ yoloe_model_loaded | tojson }},
+                yoloeModelLoadError: {{ yoloe_model_error | tojson }}
             };
         </script>
     </head>
@@ -68,13 +70,20 @@
                                 Upload Images
                             </button>
 
-                            <!-- Add Load Model Button -->
-                            <button id="load-model-btn" class="btn">
-                                Load AI Model
+                            <!-- YOLO Model Buttons -->
+                            <button id="load-yolo-model-btn" class="btn">
+                                Load YOLO Model
                             </button>
-                            <!-- AI Assist Button: Initially disabled -->
-                            <button id="ai-assist-btn" class="btn" disabled>
-                                AI Assist
+                            <button id="yolo-assist-btn" class="btn" disabled>
+                                YOLO Assist
+                            </button>
+
+                            <!-- YOLOE Model Buttons -->
+                            <button id="load-yoloe-model-btn" class="btn">
+                                Load YOLOE Model
+                            </button>
+                            <button id="yoloe-assist-btn" class="btn" disabled>
+                                YOLOE Assist
                             </button>
 
                             <input

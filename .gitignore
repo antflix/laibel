@@ -6,3 +6,9 @@ bin
 share
 static/.DS_Store
 .DS_Store
+image.jpg
+mobileclip_blt.pt
+simple_yoloe_test.py
+yoloe-11s-seg.pt
+model-config
+__pycache__/

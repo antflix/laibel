@@ -28,7 +28,21 @@ document.addEventListener("DOMContentLoaded", function () {
   let grabbedHandle = null;
   let startX = 0;
   let startY = 0;
-  let isPredicting = false; // State for AI Assist
+
+  // --- Model/Prediction States ---
+  // YOLO Model State
+  let isYoloModelLoaded =
+    window.LAIBEL_CONFIG?.yoloModelInitiallyLoaded || false;
+  let isYoloLoading = false;
+  let yoloModelLoadError = window.LAIBEL_CONFIG?.yoloModelLoadError || null;
+  let isYoloPredicting = false; // For YOLO Assist prediction
+
+  // YOLOE Model State
+  let isYoloeModelLoaded =
+    window.LAIBEL_CONFIG?.yoloeModelInitiallyLoaded || false;
+  let isYoloeLoading = false;
+  let yoloeModelLoadError = window.LAIBEL_CONFIG?.yoloeModelLoadError || null;
+  let isYoloePredicting = false; // For YOLOE Assist prediction
 
   // Canvas setup
   const canvas = document.getElementById("image-canvas");
@@ -37,7 +51,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // DOM elements
   const uploadBtn = document.getElementById("upload-btn");
   const imageUpload = document.getElementById("image-upload");
-  const saveBtn = document.getElementById("save-btn"); // Renamed for clarity (Export JSON)
+  const saveBtn = document.getElementById("save-btn"); // Export JSON
   const exportYoloBtn = document.getElementById("export-yolo-btn");
   const drawBoxBtn = document.getElementById("draw-box-btn");
   const editBoxBtn = document.getElementById("edit-box-btn");
@@ -49,15 +63,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const nextImageBtn = document.getElementById("next-image-btn");
   const imageInfoSpan = document.getElementById("image-info");
   const deleteImageBtn = document.getElementById("delete-image-btn");
-  const loadModelBtn = document.getElementById("load-model-btn"); // Added
-  const aiAssistBtn = document.getElementById("ai-assist-btn"); // AI Assist button
 
-  // --- Additions for On-Demand Model Loading ---
-  // State variable for model loading status
-  // Ensure LAIBEL_CONFIG is defined (e.g., via script tag in HTML)
-  let isModelLoaded = window.LAIBEL_CONFIG?.modelInitiallyLoaded || false;
-  let isModelLoading = false; // Track if loading is currently in progress
-  let modelLoadError = window.LAIBEL_CONFIG?.modelLoadError || null; // Store potential initial error
+  // --- Model Buttons ---
+  const loadYoloModelBtn = document.getElementById("load-yolo-model-btn");
+  const yoloAssistBtn = document.getElementById("yolo-assist-btn");
+  const loadYoloeModelBtn = document.getElementById("load-yoloe-model-btn");
+  const yoloeAssistBtn = document.getElementById("yoloe-assist-btn");
 
   // --- Event Listeners ---
   drawBoxBtn.addEventListener("click", () => switchTool("draw"));
@@ -66,15 +77,23 @@ document.addEventListener("DOMContentLoaded", function () {
     imageUpload.click();
   });
   prevImageBtn.addEventListener("click", () => {
-    if (currentImageIndex > 0 && !isPredicting && !isModelLoading) {
+    if (
+      currentImageIndex > 0 &&
+      !isYoloPredicting &&
+      !isYoloePredicting &&
+      !isYoloLoading &&
+      !isYoloeLoading
+    ) {
       loadImageData(currentImageIndex - 1);
     }
   });
   nextImageBtn.addEventListener("click", () => {
     if (
       currentImageIndex < imageData.length - 1 &&
-      !isPredicting &&
-      !isModelLoading
+      !isYoloPredicting &&
+      !isYoloePredicting &&
+      !isYoloLoading &&
+      !isYoloeLoading
     ) {
       loadImageData(currentImageIndex + 1);
     }
@@ -88,8 +107,12 @@ document.addEventListener("DOMContentLoaded", function () {
   saveBtn.addEventListener("click", saveJsonAnnotations); // Export JSON
   exportYoloBtn.addEventListener("click", exportYoloAnnotations);
   deleteImageBtn.addEventListener("click", deleteCurrentImage);
-  loadModelBtn.addEventListener("click", handleLoadModel); // Added listener
-  aiAssistBtn.addEventListener("click", handleAIAssist); // AI Assist listener
+
+  // Model Button Listeners
+  loadYoloModelBtn.addEventListener("click", handleLoadYoloModel);
+  yoloAssistBtn.addEventListener("click", handleYoloAssist);
+  loadYoloeModelBtn.addEventListener("click", handleLoadYoloeModel);
+  yoloeAssistBtn.addEventListener("click", handleYoloeAssist);
 
   // --- Keyboard Shortcut Listener ---
   document.addEventListener("keydown", handleKeyDown);
@@ -228,14 +251,9 @@ document.addEventListener("DOMContentLoaded", function () {
   function loadImageData(index) {
     if (index < 0 || index >= imageData.length) {
       console.error("Invalid image index requested:", index);
-      // Optionally clear canvas or show placeholder
-      clearCanvasAndState(); // Best to clear if index is invalid
+      clearCanvasAndState();
       return;
     }
-
-    // Save annotations for the *previous* image before switching (if any)
-    // This step is implicitly handled because `boxes` references `imageData[currentImageIndex].boxes`.
-    // When we switch `currentImageIndex`, the `boxes` reference will be updated.
 
     currentImageIndex = index;
     const data = imageData[currentImageIndex];
@@ -256,7 +274,6 @@ document.addEventListener("DOMContentLoaded", function () {
       const displayWidth = Math.round(originalWidth * scaleRatio);
       const displayHeight = Math.round(originalHeight * scaleRatio);
 
-      // Check if canvas dimensions actually need changing
       if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
         canvas.width = displayWidth;
         canvas.height = displayHeight;
@@ -275,11 +292,9 @@ document.addEventListener("DOMContentLoaded", function () {
       alert(
         `Error loading image: ${data.filename}. It might be corrupted or unsupported.`,
       );
-      // Consider removing the problematic image data or marking it as bad
       imageData.splice(currentImageIndex, 1);
-      // Try loading the next image or clear if it was the last one
       if (imageData.length > 0) {
-        loadImageData(Math.max(0, currentImageIndex)); // Load image at current index (now points to next) or 0
+        loadImageData(Math.max(0, currentImageIndex % imageData.length));
       } else {
         clearCanvasAndState();
       }
@@ -305,47 +320,46 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Initial setup for model buttons based on backend state passed via window.LAIBEL_CONFIG
   function initializeModelButtons() {
-    if (isModelLoaded) {
-      aiAssistBtn.disabled = true; // Disabled until an image is loaded
-      loadModelBtn.disabled = true;
-      loadModelBtn.textContent = "Model Loaded";
-      console.log("Model was already loaded on page initialization.");
-    } else {
-      aiAssistBtn.disabled = true; // AI assist always disabled initially
-      loadModelBtn.disabled = false; // Enable load button
-      loadModelBtn.textContent = "Load AI Model";
-      if (modelLoadError) {
-        console.error("Initial model state error:", modelLoadError);
-        // You might want to visually indicate the error state here
-        // alert(`Initial AI Model Error: ${modelLoadError}`); // Example: Alert user
-      }
+    // YOLO
+    if (isYoloModelLoaded) {
+      console.log("YOLO Model was already loaded on page initialization.");
+    } else if (yoloModelLoadError) {
+      console.error("Initial YOLO model state error:", yoloModelLoadError);
     }
-    // Call updateNavigationUI to synchronize all button states correctly
+    // YOLOE
+    if (isYoloeModelLoaded) {
+      console.log("YOLOE Model was already loaded on page initialization.");
+    } else if (yoloeModelLoadError) {
+      console.error("Initial YOLOE model state error:", yoloeModelLoadError);
+    }
+    // Call updateNavigationUI to set initial button states correctly
     updateNavigationUI();
   }
 
-  // --- Modify updateNavigationUI to include AI button state based on model load status ---
+  // --- Update Navigation and Button States ---
   function updateNavigationUI() {
     const hasImages = imageData.length > 0;
     const hasCurrentIndex =
       currentImageIndex >= 0 && currentImageIndex < imageData.length;
+    const anyLoading = isYoloLoading || isYoloeLoading;
+    const anyPredicting = isYoloPredicting || isYoloePredicting;
+    const blockActions = anyLoading || anyPredicting; // Block navigation/drawing/editing during loading or prediction
 
     // Enable/disable delete button
-    deleteImageBtn.disabled =
-      !hasCurrentIndex || isPredicting || isModelLoading;
+    deleteImageBtn.disabled = !hasCurrentIndex || blockActions;
 
-    // --- AI Assist Button Logic ---
-    // Disabled if: No image loaded OR prediction in progress OR model is currently loading OR model is NOT loaded
-    aiAssistBtn.disabled =
-      !hasCurrentIndex || isPredicting || isModelLoading || !isModelLoaded;
-    // --- Load Model Button Logic ---
-    // Disabled if: Model is already loaded OR model loading is in progress
-    loadModelBtn.disabled = isModelLoaded || isModelLoading;
+    // --- Navigation Buttons ---
+    prevImageBtn.disabled = currentImageIndex <= 0 || blockActions;
+    nextImageBtn.disabled =
+      currentImageIndex >= imageData.length - 1 || blockActions;
 
+    // --- Tool Buttons ---
+    drawBoxBtn.disabled = blockActions;
+    editBoxBtn.disabled = blockActions;
+
+    // --- Image Info ---
     if (!hasImages) {
       imageInfoSpan.textContent = "No images loaded";
-      prevImageBtn.disabled = true;
-      nextImageBtn.disabled = true;
     } else {
       if (hasCurrentIndex) {
         const displayFilename =
@@ -354,36 +368,48 @@ document.addEventListener("DOMContentLoaded", function () {
             : imageData[currentImageIndex].filename;
         imageInfoSpan.textContent = `${currentImageIndex + 1} / ${imageData.length} (${displayFilename})`;
       } else {
-        imageInfoSpan.textContent = `0 / ${imageData.length}`;
+        imageInfoSpan.textContent = `0 / ${imageData.length}`; // Should not happen if hasImages is true
       }
-      // Enable/disable navigation buttons based on index and prediction/loading state
-      prevImageBtn.disabled =
-        currentImageIndex <= 0 || isPredicting || isModelLoading;
-      nextImageBtn.disabled =
-        currentImageIndex >= imageData.length - 1 ||
-        isPredicting ||
-        isModelLoading;
     }
 
-    // Update AI Assist button text if predicting
-    if (isPredicting) {
-      aiAssistBtn.textContent = "Predicting...";
+    // --- YOLO Buttons ---
+    loadYoloModelBtn.disabled = isYoloModelLoaded || isYoloLoading;
+    yoloAssistBtn.disabled =
+      !hasCurrentIndex || !isYoloModelLoaded || isYoloPredicting || anyLoading; // Disable if not loaded, predicting, or any model is loading
+
+    if (isYoloLoading) {
+      loadYoloModelBtn.textContent = "Loading YOLO...";
+    } else if (isYoloModelLoaded) {
+      loadYoloModelBtn.textContent = "YOLO Loaded";
     } else {
-      aiAssistBtn.textContent = "AI Assist";
+      loadYoloModelBtn.textContent = "Load YOLO Model";
     }
-
-    // Update Load Model button text based on state
-    if (isModelLoading) {
-      loadModelBtn.textContent = "Loading Model...";
-    } else if (isModelLoaded) {
-      loadModelBtn.textContent = "Model Loaded";
+    if (isYoloPredicting) {
+      yoloAssistBtn.textContent = "YOLO Predicting...";
     } else {
-      loadModelBtn.textContent = "Load AI Model";
+      yoloAssistBtn.textContent = "YOLO Assist";
     }
 
-    // Ensure tool buttons are disabled during prediction/loading
-    drawBoxBtn.disabled = isPredicting || isModelLoading;
-    editBoxBtn.disabled = isPredicting || isModelLoading;
+    // --- YOLOE Buttons ---
+    loadYoloeModelBtn.disabled = isYoloeModelLoaded || isYoloeLoading;
+    yoloeAssistBtn.disabled =
+      !hasCurrentIndex ||
+      !isYoloeModelLoaded ||
+      isYoloePredicting ||
+      anyLoading; // Disable if not loaded, predicting, or any model is loading
+
+    if (isYoloeLoading) {
+      loadYoloeModelBtn.textContent = "Loading YOLOE...";
+    } else if (isYoloeModelLoaded) {
+      loadYoloeModelBtn.textContent = "YOLOE Loaded";
+    } else {
+      loadYoloeModelBtn.textContent = "Load YOLOE Model";
+    }
+    if (isYoloePredicting) {
+      yoloeAssistBtn.textContent = "YOLOE Predicting...";
+    } else {
+      yoloeAssistBtn.textContent = "YOLOE Assist";
+    }
   }
 
   // --- Canvas Event Handlers ---
@@ -394,57 +420,51 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function getMousePos(e) {
     const rect = canvas.getBoundingClientRect();
-    // Clamp coordinates to stay within canvas boundaries
     const x = Math.max(0, Math.min(e.clientX - rect.left, canvas.width));
     const y = Math.max(0, Math.min(e.clientY - rect.top, canvas.height));
     return { x, y };
   }
 
-  // Check if mouse is over a resize handle
   function getHandleUnderMouse(x, y) {
-    // Iterate backwards to prioritize handles of boxes drawn last (on top)
+    if (!boxes) return null; // Safety check if boxes array is not ready
     for (let i = boxes.length - 1; i >= 0; i--) {
       const box = boxes[i];
-      const hs = handleSize / 2; // Half handle size for center calculation
+      if (!box) continue; // Skip if box data is somehow invalid
+      const hs = handleSize / 2;
+      const tl_x = box.x,
+        tl_y = box.y;
+      const tr_x = box.x + box.width,
+        tr_y = box.y;
+      const bl_x = box.x,
+        bl_y = box.y + box.height;
+      const br_x = box.x + box.width,
+        br_y = box.y + box.height;
 
-      // Calculate handle positions
-      const tl_x = box.x;
-      const tl_y = box.y;
-      const tr_x = box.x + box.width;
-      const tr_y = box.y;
-      const bl_x = box.x;
-      const bl_y = box.y + box.height;
-      const br_x = box.x + box.width;
-      const br_y = box.y + box.height;
-
-      // Check Top-Left handle
       if (x >= tl_x - hs && x <= tl_x + hs && y >= tl_y - hs && y <= tl_y + hs)
         return { boxIndex: i, handle: "tl" };
-      // Check Top-Right handle
       if (x >= tr_x - hs && x <= tr_x + hs && y >= tr_y - hs && y <= tr_y + hs)
         return { boxIndex: i, handle: "tr" };
-      // Check Bottom-Left handle
       if (x >= bl_x - hs && x <= bl_x + hs && y >= bl_y - hs && y <= bl_y + hs)
         return { boxIndex: i, handle: "bl" };
-      // Check Bottom-Right handle
       if (x >= br_x - hs && x <= br_x + hs && y >= br_y - hs && y <= br_y + hs)
         return { boxIndex: i, handle: "br" };
     }
-    return null; // No handle found
+    return null;
   }
 
   function handleMouseDown(e) {
-    // Ignore interactions if predicting or model loading
-    if (!image || isPredicting || isModelLoading) return;
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
+    if (!image || blockActions) return;
     const pos = getMousePos(e);
     startX = pos.x;
     startY = pos.y;
 
     if (currentTool === "draw") {
       isDrawing = true;
-      resetEditState(); // Ensure no box is selected for editing
+      resetEditState();
     } else if (currentTool === "edit") {
-      resetDrawState(); // Ensure not drawing
+      resetDrawState();
       const handleInfo = getHandleUnderMouse(pos.x, pos.y);
       if (handleInfo) {
         isResizing = true;
@@ -454,83 +474,70 @@ document.addEventListener("DOMContentLoaded", function () {
           `Grabbed handle ${grabbedHandle} of box ${selectedBoxIndex}`,
         );
       } else {
-        // If clicked outside any handle, potentially select a box for moving (future feature)
-        // For now, just reset edit state if clicking empty space
         resetEditState();
-        redrawCanvas(); // Redraw to remove any previous selection highlight if any
+        redrawCanvas();
       }
     }
   }
 
   function handleMouseMove(e) {
-    // Ignore interactions if predicting or model loading
-    if (!image || isPredicting || isModelLoading) return;
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
+    if (!image || blockActions) return;
     const pos = getMousePos(e);
     const currentX = pos.x;
     const currentY = pos.y;
 
     if (currentTool === "draw" && isDrawing) {
-      redrawCanvas(); // Redraw base image + existing boxes
-      // Draw the temporary rectangle being drawn
-      ctx.strokeStyle = "#61afef"; // Use accent color for drawing preview
+      redrawCanvas();
+      ctx.strokeStyle = "#61afef";
       ctx.lineWidth = 2;
-      ctx.setLineDash([5, 3]); // Dashed line for preview
+      ctx.setLineDash([5, 3]);
       ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
-      ctx.setLineDash([]); // Reset line dash
+      ctx.setLineDash([]);
     } else if (currentTool === "edit" && isResizing) {
-      const box = boxes[selectedBoxIndex];
-      if (!box) {
-        // Safety check
+      if (selectedBoxIndex < 0 || !boxes || !boxes[selectedBoxIndex]) {
         isResizing = false;
         return;
       }
-      // Store original values before modification
-      const originalBoxX = box.x;
-      const originalBoxY = box.y;
-      const originalBoxWidth = box.width;
-      const originalBoxHeight = box.height;
-
+      const box = boxes[selectedBoxIndex];
+      const originalBoxX = box.x,
+        originalBoxY = box.y;
+      const originalBoxWidth = box.width,
+        originalBoxHeight = box.height;
       let newX = box.x,
         newY = box.y,
         newWidth = box.width,
         newHeight = box.height;
 
       switch (grabbedHandle) {
-        case "tl": // Top-left handle drags top and left edges
+        case "tl":
           newWidth = originalBoxX + originalBoxWidth - currentX;
           newHeight = originalBoxY + originalBoxHeight - currentY;
           newX = currentX;
           newY = currentY;
           break;
-        case "tr": // Top-right handle drags top and right edges
+        case "tr":
           newWidth = currentX - originalBoxX;
           newHeight = originalBoxY + originalBoxHeight - currentY;
-          // newX = originalBoxX; // X doesn't change
           newY = currentY;
           break;
-        case "bl": // Bottom-left handle drags bottom and left edges
+        case "bl":
           newWidth = originalBoxX + originalBoxWidth - currentX;
           newHeight = currentY - originalBoxY;
           newX = currentX;
-          // newY = originalBoxY; // Y doesn't change
           break;
-        case "br": // Bottom-right handle drags bottom and right edges
+        case "br":
           newWidth = currentX - originalBoxX;
           newHeight = currentY - originalBoxY;
-          // newX = originalBoxX; // X doesn't change
-          // newY = originalBoxY; // Y doesn't change
           break;
       }
-
-      // Apply changes (will be validated on mouseup)
       box.x = newX;
       box.y = newY;
       box.width = newWidth;
       box.height = newHeight;
-
-      redrawCanvas(); // Redraw with the box being resized
+      redrawCanvas();
     } else if (currentTool === "edit" && !isResizing) {
-      // Update cursor style when hovering over handles
       const handleInfo = getHandleUnderMouse(currentX, currentY);
       if (handleInfo) {
         switch (handleInfo.handle) {
@@ -544,29 +551,28 @@ document.addEventListener("DOMContentLoaded", function () {
             break;
           default:
             canvas.style.cursor = "default";
-            break; // Should not happen
+            break;
         }
       } else {
-        canvas.style.cursor = "default"; // Default cursor when not over a handle
+        canvas.style.cursor = "default";
       }
     }
   }
 
   function handleMouseUp(e) {
-    // Ignore if predicting or model loading
-    if (isPredicting || isModelLoading) return;
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
+    if (blockActions) return;
 
     if (currentTool === "draw" && isDrawing) {
       isDrawing = false;
       const pos = getMousePos(e);
-      const endX = pos.x;
-      const endY = pos.y;
-
-      // Calculate final box dimensions relative to canvas
-      const finalX = Math.min(startX, endX);
-      const finalY = Math.min(startY, endY);
-      const finalWidth = Math.abs(endX - startX);
-      const finalHeight = Math.abs(endY - startY);
+      const endX = pos.x,
+        endY = pos.y;
+      const finalX = Math.min(startX, endX),
+        finalY = Math.min(startY, endY);
+      const finalWidth = Math.abs(endX - startX),
+        finalHeight = Math.abs(endY - startY);
 
       if (
         finalWidth >= minBoxSize &&
@@ -578,67 +584,18 @@ document.addEventListener("DOMContentLoaded", function () {
           y: finalY,
           width: finalWidth,
           height: finalHeight,
-          // Assign first label by default, or 'unlabeled' if none exist
           label: labels.length > 0 ? labels[0].name : "unlabeled",
         };
         imageData[currentImageIndex].boxes.push(newBox);
-        updateAnnotationsList(); // Update the sidebar
+        updateAnnotationsList();
       } else {
-        console.log("Box too small, not added.");
+        console.log("Box too small or no image, not added.");
       }
-      redrawCanvas(); // Redraw to show the final box (or clear the preview)
+      redrawCanvas();
     } else if (currentTool === "edit" && isResizing) {
-      const box = boxes[selectedBoxIndex];
-      if (box) {
-        // Normalize box dimensions: ensure width/height are positive
-        // and x/y refer to top-left corner. Also enforce minimum size.
-        if (box.width < 0) {
-          box.x = box.x + box.width; // Adjust x
-          box.width = Math.abs(box.width);
-        }
-        if (box.height < 0) {
-          box.y = box.y + box.height; // Adjust y
-          box.height = Math.abs(box.height);
-        }
-        // Enforce minimum size
-        box.width = Math.max(minBoxSize, box.width);
-        box.height = Math.max(minBoxSize, box.height);
-
-        // Ensure box stays within canvas boundaries (optional but recommended)
-        box.x = Math.max(0, box.x);
-        box.y = Math.max(0, box.y);
-        if (box.x + box.width > canvas.width) {
-          box.width = canvas.width - box.x;
-        }
-        if (box.y + box.height > canvas.height) {
-          box.height = canvas.height - box.y;
-        }
-        // Re-check min size after boundary adjustment
-        box.width = Math.max(minBoxSize, box.width);
-        box.height = Math.max(minBoxSize, box.height);
-      }
-      resetEditState(); // Done resizing
-      redrawCanvas(); // Redraw with final position/size
-      updateAnnotationsList(); // Update sidebar if label needs refresh
-      canvas.style.cursor = "default"; // Reset cursor
-    }
-  }
-
-  function handleMouseLeave(e) {
-    // Ignore if predicting or model loading
-    if (isPredicting || isModelLoading) return;
-
-    // If drawing or resizing was in progress when mouse left canvas, finalize it
-    if (isDrawing) {
-      isDrawing = false;
-      // Optionally finalize the box based on last known position (or just cancel)
-      console.log("Drawing cancelled due to mouse leave.");
-      redrawCanvas(); // Clear drawing preview
-    }
-    if (isResizing) {
-      // Apply the same finalization logic as in handleMouseUp
-      const box = boxes[selectedBoxIndex];
-      if (box) {
+      if (selectedBoxIndex >= 0 && boxes && boxes[selectedBoxIndex]) {
+        const box = boxes[selectedBoxIndex];
+        // Normalize box: ensure width/height positive, enforce min size, check boundaries
         if (box.width < 0) {
           box.x += box.width;
           box.width = Math.abs(box.width);
@@ -649,7 +606,48 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         box.width = Math.max(minBoxSize, box.width);
         box.height = Math.max(minBoxSize, box.height);
-        // Boundary check (optional)
+        box.x = Math.max(0, box.x);
+        box.y = Math.max(0, box.y);
+        if (box.x + box.width > canvas.width) {
+          box.width = canvas.width - box.x;
+        }
+        if (box.y + box.height > canvas.height) {
+          box.height = canvas.height - box.y;
+        }
+        box.width = Math.max(minBoxSize, box.width); // Re-check min size after clamping
+        box.height = Math.max(minBoxSize, box.height);
+      }
+      resetEditState();
+      redrawCanvas();
+      updateAnnotationsList();
+      canvas.style.cursor = "default";
+    }
+  }
+
+  function handleMouseLeave(e) {
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
+    if (blockActions) return;
+
+    if (isDrawing) {
+      isDrawing = false;
+      console.log("Drawing cancelled due to mouse leave.");
+      redrawCanvas();
+    }
+    if (isResizing) {
+      // Apply same finalization as mouseup
+      if (selectedBoxIndex >= 0 && boxes && boxes[selectedBoxIndex]) {
+        const box = boxes[selectedBoxIndex];
+        if (box.width < 0) {
+          box.x += box.width;
+          box.width = Math.abs(box.width);
+        }
+        if (box.height < 0) {
+          box.y += box.height;
+          box.height = Math.abs(box.height);
+        }
+        box.width = Math.max(minBoxSize, box.width);
+        box.height = Math.max(minBoxSize, box.height);
         box.x = Math.max(0, box.x);
         box.y = Math.max(0, box.y);
         box.width = Math.min(box.width, canvas.width - box.x);
@@ -661,54 +659,45 @@ document.addEventListener("DOMContentLoaded", function () {
       resetEditState();
       redrawCanvas();
       updateAnnotationsList();
-      canvas.style.cursor = "default"; // Reset cursor
+      canvas.style.cursor = "default";
     } else if (currentTool === "edit") {
-      canvas.style.cursor = "default"; // Ensure cursor resets if just hovering
+      canvas.style.cursor = "default";
     }
   }
 
   // --- Drawing Canvas ---
   function redrawCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // --- Explicitly get current image data and boxes ---
     const currentImageData =
       currentImageIndex >= 0 ? imageData[currentImageIndex] : null;
 
-    // Draw the image if available
     if (image && canvas.width > 0 && canvas.height > 0) {
       try {
         ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
       } catch (e) {
         console.error("Error drawing image:", e);
         drawPlaceholder("Error drawing image");
-        return; // Stop drawing further elements
+        return;
       }
     } else {
-      // Draw a placeholder if no image is loaded
       drawPlaceholder("Upload images to begin");
-      return; // Stop drawing further elements (boxes)
+      return;
     }
 
-    // --- Use the fetched boxes ---
-    const currentBoxes = currentImageData ? currentImageData.boxes : []; // Get boxes for current image, or empty if none
-
+    const currentBoxes = currentImageData ? currentImageData.boxes : [];
     if (!currentBoxes) {
       console.warn(
         "RedrawCanvas: No boxes array found for current image index:",
         currentImageIndex,
       );
-      return; // Should not happen if currentImageData exists, but safety check
+      return;
     }
 
-    // Draw all bounding boxes for the current image
     currentBoxes.forEach((box, index) => {
-      // Iterate over currentBoxes, not the global 'boxes'
       const labelObj = labels.find((l) => l.name === box.label);
-      const color = labelObj ? labelObj.color : "#CCCCCC"; // Default grey for unknown labels
-      const fontColor = getContrastYIQ(color); // Get good contrast for text
+      const color = labelObj ? labelObj.color : "#CCCCCC";
+      const fontColor = getContrastYIQ(color);
 
-      // --- Add Robustness: Check for valid numbers before drawing ---
       if (
         isNaN(box.x) ||
         isNaN(box.y) ||
@@ -719,16 +708,13 @@ document.addEventListener("DOMContentLoaded", function () {
           `RedrawCanvas: Skipping box index ${index} due to invalid coordinates:`,
           box,
         );
-        return; // Continue to the next box
+        return;
       }
-      // --- End Check ---
 
-      // Draw the box rectangle
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.strokeRect(box.x, box.y, box.width, box.height);
 
-      // Draw the label background and text
       if (box.label) {
         ctx.fillStyle = color;
         const text = box.label;
@@ -737,72 +723,66 @@ document.addEventListener("DOMContentLoaded", function () {
         const textWidth = textMetrics.width;
         const textHeight = 16;
         const textPad = 5;
-
         let bgY = box.y - textHeight;
         if (bgY < 0) {
           bgY = box.y + 2;
         }
-
         ctx.fillRect(box.x, bgY, textWidth + textPad * 2, textHeight);
-
         ctx.fillStyle = fontColor;
         ctx.fillText(text, box.x + textPad, bgY + textHeight - 4);
       }
 
-      // Draw resize handles if in edit mode
       if (currentTool === "edit") {
-        // ... (handle drawing logic remains the same, using 'box') ...
         ctx.fillStyle = color;
         ctx.strokeStyle = "white";
         ctx.lineWidth = 1;
         const hs = handleSize / 2;
-        ctx.fillRect(box.x - hs, box.y - hs, handleSize, handleSize); // TL
-        ctx.strokeRect(box.x - hs, box.y - hs, handleSize, handleSize);
+        ctx.fillRect(box.x - hs, box.y - hs, handleSize, handleSize);
+        ctx.strokeRect(box.x - hs, box.y - hs, handleSize, handleSize); // TL
         ctx.fillRect(
+          box.x + box.width - hs,
+          box.y - hs,
+          handleSize,
+          handleSize,
+        );
+        ctx.strokeRect(
           box.x + box.width - hs,
           box.y - hs,
           handleSize,
           handleSize,
         ); // TR
-        ctx.strokeRect(
-          box.x + box.width - hs,
-          box.y - hs,
+        ctx.fillRect(
+          box.x - hs,
+          box.y + box.height - hs,
           handleSize,
           handleSize,
         );
-        ctx.fillRect(
+        ctx.strokeRect(
           box.x - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
         ); // BL
-        ctx.strokeRect(
-          box.x - hs,
-          box.y + box.height - hs,
-          handleSize,
-          handleSize,
-        );
         ctx.fillRect(
           box.x + box.width - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        ); // BR
+        );
         ctx.strokeRect(
           box.x + box.width - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        );
+        ); // BR
       }
     });
   }
 
-  // Helper to draw placeholder text on canvas
   function drawPlaceholder(text) {
-    ctx.fillStyle = "#33373e"; // Darker background for placeholder
+    ctx.fillStyle = "#33373e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#828a9a"; // Muted text color
+    ctx.fillStyle = "#828a9a";
     ctx.font = "16px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -820,15 +800,13 @@ document.addEventListener("DOMContentLoaded", function () {
       alert(`Label "${labelName}" already exists (case-insensitive).`);
       return;
     }
-
     const color = getRandomColor();
     labels.push({ name: labelName, color: color });
-    updateLabelsList(); // Update the labels sidebar section
-    updateAnnotationsList(); // Update annotation dropdowns in case 'unlabeled' needs replacing
-    newLabelInput.value = ""; // Clear input field
-    newLabelInput.focus(); // Set focus back for quick adding
+    updateLabelsList();
+    updateAnnotationsList(); // Update dropdowns
+    newLabelInput.value = "";
+    newLabelInput.focus();
 
-    // If this is the *first* label added, update existing 'unlabeled' boxes
     if (labels.length === 1 && currentImageIndex !== -1) {
       let changed = false;
       imageData[currentImageIndex].boxes.forEach((box) => {
@@ -839,14 +817,14 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       if (changed) {
         redrawCanvas();
-        updateAnnotationsList(); // Reflect label change in list
+        updateAnnotationsList();
       }
     }
     console.log(`Added label: ${labelName} (${color})`);
   }
 
   function updateLabelsList() {
-    labelsList.innerHTML = ""; // Clear existing list
+    labelsList.innerHTML = "";
     if (labels.length === 0) {
       labelsList.innerHTML =
         '<p style="color: var(--text-secondary); font-style: italic; padding: 5px;">No labels defined yet.</p>';
@@ -854,21 +832,16 @@ document.addEventListener("DOMContentLoaded", function () {
       labels.forEach((label, index) => {
         const labelItem = document.createElement("div");
         labelItem.className = "label-item";
-        // labelItem.style.cursor = "pointer"; // Maybe use later for setting default label
-
         const labelDisplay = document.createElement("div");
-        labelDisplay.innerHTML = `<span class="label-color" style="background-color: ${label.color}"></span>${escapeHtml(label.name)}`; // Escape label name
-
-        // Delete button for the label
+        labelDisplay.innerHTML = `<span class="label-color" style="background-color: ${label.color}"></span>${escapeHtml(label.name)}`;
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "btn delete-label-btn";
-        deleteBtn.textContent = "✕"; // Use '✕' symbol
+        deleteBtn.textContent = "✕";
         deleteBtn.title = `Delete label "${escapeHtml(label.name)}"`;
         deleteBtn.onclick = (e) => {
-          e.stopPropagation(); // Prevent triggering labelItem click if added later
+          e.stopPropagation();
           deleteLabel(index);
         };
-
         labelItem.appendChild(labelDisplay);
         labelItem.appendChild(deleteBtn);
         labelsList.appendChild(labelItem);
@@ -879,23 +852,19 @@ document.addEventListener("DOMContentLoaded", function () {
   function deleteLabel(indexToDelete) {
     const labelToDelete = labels[indexToDelete];
     if (!labelToDelete) return;
-
     const labelNameToDelete = labelToDelete.name;
-
     if (
       !confirm(
-        `Are you sure you want to delete the label "${labelNameToDelete}"? \nThis will change annotations using this label to 'unlabeled' (or the first available label if 'unlabeled' is not suitable).`,
+        `Are you sure you want to delete the label "${labelNameToDelete}"? \nThis will change annotations using this label to 'unlabeled' (or the first available label).`,
       )
     ) {
       return;
     }
 
     console.log(`Deleting label: ${labelNameToDelete}`);
-    labels.splice(indexToDelete, 1); // Remove from the global list
-
+    labels.splice(indexToDelete, 1);
     const fallbackLabel = labels.length > 0 ? labels[0].name : "unlabeled";
 
-    // Update boxes across ALL images that used this label
     imageData.forEach((imgData, imgIndex) => {
       let changed = false;
       imgData.boxes.forEach((box) => {
@@ -904,36 +873,27 @@ document.addEventListener("DOMContentLoaded", function () {
           changed = true;
         }
       });
-      // If changes occurred on the currently viewed image, trigger updates
       if (changed && imgIndex === currentImageIndex) {
         redrawCanvas();
         updateAnnotationsList();
       } else if (changed) {
-        // If changed on a non-visible image, the data is updated,
-        // it will be reflected when that image is loaded.
         console.log(`Updated labels in background image: ${imgData.filename}`);
       }
     });
 
-    updateLabelsList(); // Refresh the label list itself
-    // If the current image wasn't affected, we still might need to update
-    // the annotations list if the deleted label was present there.
+    updateLabelsList();
+    // Redraw/update annotations list if current image was affected or fallback applied
     if (
       currentImageIndex !== -1 &&
-      !imageData[currentImageIndex].boxes.some(
-        (b) =>
-          b.label === fallbackLabel &&
-          !labels.some((l) => l.name === fallbackLabel),
-      )
+      imageData[currentImageIndex].boxes.some((b) => b.label === fallbackLabel)
     ) {
-      updateAnnotationsList();
+      updateAnnotationsList(); // Ensure dropdowns are correct even if canvas didn't change
     }
   }
 
   // --- Annotation List Management ---
   function updateAnnotationsList() {
-    annotationsList.innerHTML = ""; // Clear previous list
-
+    annotationsList.innerHTML = "";
     if (
       currentImageIndex === -1 ||
       !imageData[currentImageIndex] ||
@@ -941,7 +901,7 @@ document.addEventListener("DOMContentLoaded", function () {
     ) {
       annotationsList.innerHTML =
         '<p style="color: var(--text-secondary); font-style: italic; padding: 5px;">No annotations for this image.</p>';
-      boxes = []; // Ensure local 'boxes' is empty if no image/boxes
+      boxes = [];
       return;
     }
 
@@ -950,15 +910,11 @@ document.addEventListener("DOMContentLoaded", function () {
     boxes.forEach((box, index) => {
       const annotationItem = document.createElement("div");
       annotationItem.className = "annotation-item";
-
-      // Create dropdown (select) for labels
       const labelSelect = document.createElement("select");
       labelSelect.className = "annotation-label-select";
       labelSelect.title = `Label for box ${index + 1}`;
-
       let currentLabelExists = labels.some((l) => l.name === box.label);
 
-      // Add 'unlabeled' option if no labels exist OR if current box label is not in the list
       if (
         labels.length === 0 ||
         box.label === "unlabeled" ||
@@ -967,35 +923,30 @@ document.addEventListener("DOMContentLoaded", function () {
         const option = document.createElement("option");
         option.value = "unlabeled";
         option.textContent = "unlabeled";
-        // Select 'unlabeled' if it's the box's label or the label doesn't exist
         option.selected = box.label === "unlabeled" || !currentLabelExists;
         labelSelect.appendChild(option);
       }
 
-      // Add options for all defined labels
       labels.forEach((label) => {
         const option = document.createElement("option");
         option.value = label.name;
-        option.textContent = escapeHtml(label.name); // Escape label name
+        option.textContent = escapeHtml(label.name);
         if (box.label === label.name) {
           option.selected = true;
         }
         labelSelect.appendChild(option);
       });
 
-      // Event listener for changing the label via dropdown
       labelSelect.onchange = (e) => {
         const newLabel = e.target.value;
         imageData[currentImageIndex].boxes[index].label = newLabel;
         console.log(`Box ${index} label changed to: ${newLabel}`);
-        redrawCanvas(); // Update canvas to show new label color/text
-        // No need to call updateAnnotationsList again unless colors changed etc.
+        redrawCanvas();
       };
 
-      // Create delete button for the annotation
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "btn delete-annotation-btn";
-      deleteBtn.textContent = "✕"; // Use '✕' symbol
+      deleteBtn.textContent = "✕";
       deleteBtn.title = `Delete annotation ${index + 1}`;
       deleteBtn.onclick = () => {
         deleteAnnotation(index);
@@ -1010,161 +961,265 @@ document.addEventListener("DOMContentLoaded", function () {
   function deleteAnnotation(indexToDelete) {
     if (currentImageIndex === -1 || !imageData[currentImageIndex]) return;
 
-    // If currently resizing the box being deleted, reset state
     if (isResizing && selectedBoxIndex === indexToDelete) {
       resetEditState();
-      canvas.style.cursor = currentTool === "edit" ? "default" : "crosshair"; // Reset cursor based on tool
+      canvas.style.cursor = currentTool === "edit" ? "default" : "crosshair";
     }
 
     imageData[currentImageIndex].boxes.splice(indexToDelete, 1);
     console.log(`Deleted annotation ${indexToDelete + 1}`);
 
-    // Adjust selectedBoxIndex if it was affected by the deletion
     if (selectedBoxIndex > indexToDelete) {
       selectedBoxIndex--;
     } else if (selectedBoxIndex === indexToDelete) {
-      resetEditState(); // The selected box is gone
+      resetEditState();
     }
 
-    updateAnnotationsList(); // Refresh the list
-    redrawCanvas(); // Remove the box from the canvas
+    updateAnnotationsList();
+    redrawCanvas();
   }
 
-  // --- Function to handle loading the AI model ---
-  async function handleLoadModel() {
-    if (isModelLoaded || isModelLoading) {
-      console.log("Model already loaded or loading in progress.");
+  // --- Function to handle loading the YOLO model ---
+  async function handleLoadYoloModel() {
+    if (isYoloModelLoaded || isYoloLoading) {
+      console.log("YOLO Model already loaded or loading in progress.");
       return;
     }
-
-    console.log("Requesting AI model load...");
-    isModelLoading = true;
-    updateNavigationUI(); // Update buttons state (disable load, show loading text)
+    console.log("Requesting YOLO model load...");
+    isYoloLoading = true;
+    updateNavigationUI();
 
     try {
-      const response = await fetch("/load_model", { method: "POST" });
-
-      // Check response status before parsing JSON
+      const response = await fetch("/load_yolo_model", { method: "POST" });
       if (!response.ok) {
         let errorMsg = `HTTP error ${response.status}`;
         try {
-          // Try to get a more specific error from the JSON body
           const errorData = await response.json();
           errorMsg = errorData.error || errorMsg;
         } catch (jsonError) {
-          // If response is not JSON or parsing fails, use the HTTP status text
-          errorMsg += `: ${response.statusText || "Failed to load model"}`;
+          errorMsg += `: ${response.statusText || "Failed to load YOLO model"}`;
         }
         throw new Error(errorMsg);
       }
-
       const result = await response.json();
-
       if (result.success) {
-        console.log("AI Model loaded successfully:", result.message || "");
-        isModelLoaded = true;
-        modelLoadError = null; // Clear any previous error
-        alert("AI Model loaded successfully!");
+        console.log("YOLO Model loaded successfully:", result.message || "");
+        isYoloModelLoaded = true;
+        yoloModelLoadError = null;
+        alert("YOLO Model loaded successfully!");
       } else {
-        throw new Error(result.error || "Failed to load model. Unknown error.");
+        throw new Error(
+          result.error || "Failed to load YOLO model. Unknown error.",
+        );
       }
     } catch (error) {
-      console.error("Failed to load AI model:", error);
-      isModelLoaded = false;
-      modelLoadError = error.message; // Store the error message
-      alert(`Error loading AI Model: ${error.message}`);
+      console.error("Failed to load YOLO model:", error);
+      isYoloModelLoaded = false;
+      yoloModelLoadError = error.message;
+      alert(`Error loading YOLO Model: ${error.message}`);
     } finally {
-      isModelLoading = false; // Reset loading flag
-      // Update all button states based on the outcome
+      isYoloLoading = false;
       updateNavigationUI();
     }
   }
 
-  // --- Modify handleAIAssist to check isModelLoaded flag first ---
-  async function handleAIAssist() {
-    if (!isModelLoaded) {
-      alert("AI Model is not loaded. Please click 'Load AI Model' first.");
+  // --- Function to handle loading the YOLOE model ---
+  async function handleLoadYoloeModel() {
+    if (isYoloeModelLoaded || isYoloeLoading) {
+      console.log("YOLOE Model already loaded or loading in progress.");
       return;
     }
+    console.log("Requesting YOLOE model load...");
+    isYoloeLoading = true;
+    updateNavigationUI();
 
+    try {
+      const response = await fetch("/load_yoloe_model", { method: "POST" });
+      if (!response.ok) {
+        let errorMsg = `HTTP error ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (jsonError) {
+          errorMsg += `: ${response.statusText || "Failed to load YOLOE model"}`;
+        }
+        throw new Error(errorMsg);
+      }
+      const result = await response.json();
+      if (result.success) {
+        console.log("YOLOE Model loaded successfully:", result.message || "");
+        isYoloeModelLoaded = true;
+        yoloeModelLoadError = null;
+        alert("YOLOE Model loaded successfully!");
+      } else {
+        throw new Error(
+          result.error || "Failed to load YOLOE model. Unknown error.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load YOLOE model:", error);
+      isYoloeModelLoaded = false;
+      yoloeModelLoadError = error.message;
+      alert(`Error loading YOLOE Model: ${error.message}`);
+    } finally {
+      isYoloeLoading = false;
+      updateNavigationUI();
+    }
+  }
+
+  // --- Function to handle YOLO AI Assist ---
+  async function handleYoloAssist() {
+    if (!isYoloModelLoaded) {
+      alert("YOLO Model is not loaded. Please click 'Load YOLO Model' first.");
+      return;
+    }
     if (
       currentImageIndex === -1 ||
       !imageData[currentImageIndex] ||
-      isPredicting || // Already predicting
-      isModelLoading // Model is loading
+      isYoloPredicting ||
+      isYoloePredicting ||
+      isYoloLoading ||
+      isYoloeLoading
     ) {
       console.log(
-        "AI Assist cannot run: No image, prediction/loading in progress.",
+        "YOLO Assist cannot run: No image, operation in progress, or model not ready.",
       );
       return;
     }
 
     const currentImageData = imageData[currentImageIndex];
-    console.log(`Requesting AI prediction for: ${currentImageData.filename}`);
-
-    // --- UI updates: Indicate loading ---
-    isPredicting = true;
-    updateNavigationUI(); // Update button states for prediction
-    // Consider adding a loading overlay or spinner to the canvas
+    console.log(`Requesting YOLO prediction for: ${currentImageData.filename}`);
+    isYoloPredicting = true;
+    updateNavigationUI();
     canvas.style.opacity = "0.7";
     canvas.style.cursor = "wait";
 
     try {
       const response = await fetch("/ai_assist", {
+        // Endpoint for YOLO
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ image_data: currentImageData.src }), // Send base64 data URL
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_data: currentImageData.src }),
       });
-
       if (!response.ok) {
-        // Try to get error message from response body
         let errorMsg = `HTTP error ${response.status}`;
         try {
           const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg; // Use backend error if available
+          errorMsg = errorData.error || errorMsg;
         } catch (e) {
-          /* Ignore if response body is not JSON */
+          /* Ignore */
         }
-        // Check for specific 503 error (model not loaded server-side)
         if (response.status === 503) {
+          // Model not loaded server-side?
           errorMsg +=
-            ". The AI model might not be loaded on the server. Try loading it again.";
-          // Reset frontend model state if server says it's not loaded
-          isModelLoaded = false;
+            ". The YOLO model might not be loaded on the server. Try loading it again.";
+          isYoloModelLoaded = false; // Reset frontend state
         }
         throw new Error(errorMsg);
       }
-
       const result = await response.json();
-
       if (result.success && result.boxes) {
         console.log(
-          "AI prediction successful. Received boxes:",
+          "YOLO prediction successful. Received boxes:",
           result.boxes.length,
         );
-        addPredictionsToCanvas(result.boxes);
+        addPredictionsToCanvas(result.boxes, "YOLO"); // Pass type for logging
       } else {
-        // If backend reports success:false, use its error message
         throw new Error(
-          result.error || "Prediction failed: No boxes found or backend error.",
+          result.error ||
+            "YOLO Prediction failed: No boxes found or backend error.",
         );
       }
     } catch (error) {
-      console.error("AI Assist failed:", error);
-      alert(`AI Assist Error: ${error.message}`);
+      console.error("YOLO Assist failed:", error);
+      alert(`YOLO Assist Error: ${error.message}`);
     } finally {
-      // --- UI updates: Restore state ---
-      isPredicting = false; // Reset prediction flag
-      updateNavigationUI(); // Update all button states correctly
+      isYoloPredicting = false;
+      updateNavigationUI();
       canvas.style.opacity = "1";
-      // Restore cursor based on the selected tool
       canvas.style.cursor = currentTool === "draw" ? "crosshair" : "default";
     }
   }
 
-  function addPredictionsToCanvas(predictions) {
+  // --- Function to handle YOLOE AI Assist ---
+  async function handleYoloeAssist() {
+    if (!isYoloeModelLoaded) {
+      alert(
+        "YOLOE Model is not loaded. Please click 'Load YOLOE Model' first.",
+      );
+      return;
+    }
+    if (
+      currentImageIndex === -1 ||
+      !imageData[currentImageIndex] ||
+      isYoloPredicting ||
+      isYoloePredicting ||
+      isYoloLoading ||
+      isYoloeLoading
+    ) {
+      console.log(
+        "YOLOE Assist cannot run: No image, operation in progress, or model not ready.",
+      );
+      return;
+    }
+
+    const currentImageData = imageData[currentImageIndex];
+    console.log(
+      `Requesting YOLOE prediction for: ${currentImageData.filename}`,
+    );
+    isYoloePredicting = true;
+    updateNavigationUI();
+    canvas.style.opacity = "0.7";
+    canvas.style.cursor = "wait";
+
+    try {
+      const response = await fetch("/yoloe_assist", {
+        // Endpoint for YOLOE
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_data: currentImageData.src }),
+      });
+      if (!response.ok) {
+        let errorMsg = `HTTP error ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (e) {
+          /* Ignore */
+        }
+        if (response.status === 503) {
+          // Model not loaded server-side?
+          errorMsg +=
+            ". The YOLOE model might not be loaded on the server. Try loading it again.";
+          isYoloeModelLoaded = false; // Reset frontend state
+        }
+        throw new Error(errorMsg);
+      }
+      const result = await response.json();
+      if (result.success && result.boxes) {
+        console.log(
+          "YOLOE prediction successful. Received boxes:",
+          result.boxes.length,
+        );
+        addPredictionsToCanvas(result.boxes, "YOLOE"); // Pass type for logging
+      } else {
+        throw new Error(
+          result.error ||
+            "YOLOE Prediction failed: No boxes found or backend error.",
+        );
+      }
+    } catch (error) {
+      console.error("YOLOE Assist failed:", error);
+      alert(`YOLOE Assist Error: ${error.message}`);
+    } finally {
+      isYoloePredicting = false;
+      updateNavigationUI();
+      canvas.style.opacity = "1";
+      canvas.style.cursor = currentTool === "draw" ? "crosshair" : "default";
+    }
+  }
+
+  function addPredictionsToCanvas(predictions, modelType = "AI") {
     if (currentImageIndex === -1 || !imageData[currentImageIndex]) return;
 
     const currentImageData = imageData[currentImageIndex];
@@ -1172,37 +1227,30 @@ document.addEventListener("DOMContentLoaded", function () {
     let boxesAdded = 0;
 
     predictions.forEach((pred) => {
-      // Backend sends coordinates relative to ORIGINAL image size
-      const originalX = pred.x_min;
-      const originalY = pred.y_min;
+      const originalX = pred.x_min,
+        originalY = pred.y_min;
       const originalWidth = pred.x_max - pred.x_min;
       const originalHeight = pred.y_max - pred.y_min;
 
-      // Convert ORIGINAL coordinates to CANVAS coordinates
       const canvasX = Math.round(originalX * currentScaleRatio);
       const canvasY = Math.round(originalY * currentScaleRatio);
       const canvasWidth = Math.round(originalWidth * currentScaleRatio);
       const canvasHeight = Math.round(originalHeight * currentScaleRatio);
 
-      // Basic validation for converted coordinates
       if (canvasWidth < minBoxSize || canvasHeight < minBoxSize) {
         console.warn(
-          `Skipping predicted box for label '${pred.label}' - too small on canvas (${canvasWidth}x${canvasHeight})`,
+          `Skipping ${modelType} predicted box for label '${pred.label}' - too small on canvas (${canvasWidth}x${canvasHeight})`,
         );
         return;
       }
 
-      // Ensure the predicted label exists in our list, add if not?
-      // For now, just use the label directly. If it doesn't exist, it gets default color.
-      // User can add the label manually later if desired.
-      if (!labels.some((l) => l.name === pred.label)) {
+      const labelName = pred.label || "unlabeled"; // Default label if missing
+      if (!labels.some((l) => l.name === labelName)) {
         console.log(
-          `Predicted label "${pred.label}" not in user-defined labels. Using directly. Consider adding it.`,
+          `${modelType} predicted label "${labelName}" not in user-defined labels. Using directly. Consider adding it.`,
         );
-        // Optionally: add the label automatically
-        // const color = getRandomColor();
-        // labels.push({ name: pred.label, color: color });
-        // updateLabelsList(); // Update sidebar if adding automatically
+        // Optional: Add automatically
+        // const color = getRandomColor(); labels.push({ name: labelName, color: color }); updateLabelsList();
       }
 
       const newBox = {
@@ -1210,60 +1258,55 @@ document.addEventListener("DOMContentLoaded", function () {
         y: canvasY,
         width: canvasWidth,
         height: canvasHeight,
-        label: pred.label,
-        // Could also store confidence if needed: confidence: pred.confidence
+        label: labelName,
+        // confidence: pred.confidence // Could store this if needed
       };
-
       currentImageData.boxes.push(newBox);
       boxesAdded++;
     });
 
     if (boxesAdded > 0) {
-      console.log(`Added ${boxesAdded} predicted boxes to the canvas.`);
+      console.log(
+        `Added ${boxesAdded} ${modelType} predicted boxes to the canvas.`,
+      );
       redrawCanvas();
       updateAnnotationsList();
-      // Optional: Provide feedback to the user
-      // alert(`${boxesAdded} boxes added by AI Assist.`);
+      // alert(`${boxesAdded} boxes added by ${modelType} Assist.`);
     } else {
-      console.log("No valid boxes were added from the prediction results.");
-      // Optional: Provide feedback
-      // alert("AI Assist finished, but no new boxes met the criteria to be added.");
+      console.log(
+        `No valid boxes were added from the ${modelType} prediction results.`,
+      );
+      // alert(`${modelType} Assist finished, but no new boxes met the criteria.`);
     }
   }
 
   // --- Utilities ---
   function getRandomColor() {
-    // Generate visually distinct colors (more complex than pure random)
-    // Simple version:
     const letters = "0123456789ABCDEF";
     let color = "#";
     for (let i = 0; i < 6; i++) {
       color += letters[Math.floor(Math.random() * 16)];
     }
-    // Avoid colors that are too light (poor contrast on white background)
-    // This is a basic check, better methods exist
-    const r = parseInt(color.slice(1, 3), 16);
-    const g = parseInt(color.slice(3, 5), 16);
-    const b = parseInt(color.slice(5, 7), 16);
+    const r = parseInt(color.slice(1, 3), 16),
+      g = parseInt(color.slice(3, 5), 16),
+      b = parseInt(color.slice(5, 7), 16);
     if (r > 200 && g > 200 && b > 200) {
-      return getRandomColor(); // Retry if too light
-    }
+      return getRandomColor();
+    } // Retry if too light
     return color;
   }
 
-  // Determine if black or white text is better contrast for a given hex color
   function getContrastYIQ(hexcolor) {
     if (hexcolor.startsWith("#")) {
       hexcolor = hexcolor.slice(1);
     }
-    const r = parseInt(hexcolor.substr(0, 2), 16);
-    const g = parseInt(hexcolor.substr(2, 2), 16);
-    const b = parseInt(hexcolor.substr(4, 2), 16);
+    const r = parseInt(hexcolor.substr(0, 2), 16),
+      g = parseInt(hexcolor.substr(2, 2), 16),
+      b = parseInt(hexcolor.substr(4, 2), 16);
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    return yiq >= 128 ? "#000000" : "#FFFFFF"; // Return black for light bg, white for dark bg
+    return yiq >= 128 ? "#000000" : "#FFFFFF";
   }
 
-  // Simple HTML escaping
   function escapeHtml(unsafe) {
     if (!unsafe) return "";
     return unsafe
@@ -1274,21 +1317,19 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/'/g, "&#039;");
   }
 
-  // --- Download Helper Function ---
   function downloadContent(content, filename, mimeType = "application/json") {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.style.display = "none"; // Keep it hidden
+    a.style.display = "none";
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    // Cleanup: Use setTimeout to allow download initiation before revoking
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    }, 100); // 100ms delay seems safe
+    }, 100);
   }
 
   // --- Save JSON Annotations Function ---
@@ -1301,10 +1342,9 @@ document.addEventListener("DOMContentLoaded", function () {
       (imgData) => imgData.boxes && imgData.boxes.length > 0,
     );
     if (!hasAnnotations) {
-      // Confirm if user wants to export empty structure
       if (
         !confirm(
-          "No annotations have been made. Do you want to export the structure anyway (with empty annotation lists)?",
+          "No annotations have been made. Export empty structure anyway?",
         )
       ) {
         return;
@@ -1312,23 +1352,20 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const allAnnotations = {
-      labels: labels.map((l) => ({ name: l.name, color: l.color })), // Include labels used
+      labels: labels.map((l) => ({ name: l.name, color: l.color })),
       annotations_by_image: imageData.map((imgData) => ({
         image_filename: imgData.filename,
         image_width: imgData.originalWidth,
         image_height: imgData.originalHeight,
-        // Convert CANVAS coordinates back to ORIGINAL image coordinates for export
         boxes: imgData.boxes
           .map((box) => {
-            const scale = imgData.scaleRatio; // The ratio used for THIS image
-            // Ensure division by scale doesn't result in NaN or Infinity if scale is 0 or invalid
+            const scale = imgData.scaleRatio;
             const safeScale = scale > 0 ? scale : 1;
-            const x_min = Math.round(box.x / safeScale);
-            const y_min = Math.round(box.y / safeScale);
-            const x_max = Math.round((box.x + box.width) / safeScale);
-            const y_max = Math.round((box.y + box.height) / safeScale);
-
-            // Clamp coordinates to be within original image dimensions
+            const x_min = Math.round(box.x / safeScale),
+              y_min = Math.round(box.y / safeScale);
+            const x_max = Math.round((box.x + box.width) / safeScale),
+              y_max = Math.round((box.y + box.height) / safeScale);
+            // Clamp coordinates
             const clamped_x_min = Math.max(
               0,
               Math.min(x_min, imgData.originalWidth),
@@ -1345,9 +1382,7 @@ document.addEventListener("DOMContentLoaded", function () {
               clamped_y_min,
               Math.min(y_max, imgData.originalHeight),
             );
-
             return {
-              // Use clamped coordinates
               x_min: clamped_x_min,
               y_min: clamped_y_min,
               x_max: clamped_x_max,
@@ -1355,25 +1390,22 @@ document.addEventListener("DOMContentLoaded", function () {
               label: box.label,
             };
           })
-          .filter((b) => b.x_max - b.x_min > 0 && b.y_max - b.y_min > 0), // Filter out zero-area boxes after conversion/clamping
+          .filter((b) => b.x_max - b.x_min > 0 && b.y_max - b.y_min > 0), // Filter zero-area boxes
       })),
     };
-    const jsonStr = JSON.stringify(allAnnotations, null, 2); // Pretty print JSON
+    const jsonStr = JSON.stringify(allAnnotations, null, 2);
     console.log("Exporting all annotations as JSON.");
     downloadContent(
       jsonStr,
       `all_annotations_${Date.now()}.json`,
       "application/json",
     );
-    // alert("Annotation JSON for all images prepared for download."); // Alert might be annoying if downloading many files
   }
 
   // --- Export YOLO Annotations Function ---
   function exportYoloAnnotations() {
     if (labels.length === 0) {
-      alert(
-        "Please define labels before exporting in YOLO format. The order matters.",
-      );
+      alert("Define labels before exporting in YOLO format.");
       return;
     }
     if (imageData.length === 0) {
@@ -1381,102 +1413,80 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Create a map of label name to its index (0-based) based on the order in the 'labels' array
     const labelIndexMap = new Map(
       labels.map((label, index) => [label.name, index]),
     );
     console.log("Label Map for YOLO Export:", labelIndexMap);
-
-    let exportedFiles = 0;
-    let skippedImages = 0;
-    let totalSkippedBoxes = 0;
+    let exportedFiles = 0,
+      skippedImages = 0,
+      totalSkippedBoxes = 0;
 
     imageData.forEach((imgData) => {
       if (!imgData.boxes || imgData.boxes.length === 0) {
         skippedImages++;
-        return; // Skip images with no boxes
+        return;
       }
-
       let yoloContent = "";
       let skippedBoxesInImage = 0;
 
       imgData.boxes.forEach((box) => {
         const labelIndex = labelIndexMap.get(box.label);
-
-        // Check if the label exists in our defined labels map
         if (labelIndex === undefined) {
           console.warn(
-            `Skipping box: Label "${box.label}" not found in defined labels list for image ${imgData.filename}. Please add it to the Labels section.`,
+            `Skipping box: Label "${box.label}" not found in defined labels for image ${imgData.filename}.`,
           );
           skippedBoxesInImage++;
-          return; // Skip this box
+          return;
         }
-
-        // Convert CANVAS coordinates back to ORIGINAL coordinates
         const scale = imgData.scaleRatio;
-        const safeScale = scale > 0 ? scale : 1; // Prevent division by zero
-
-        const original_x_min = box.x / safeScale;
-        const original_y_min = box.y / safeScale;
-        const original_box_width = box.width / safeScale;
-        const original_box_height = box.height / safeScale;
-
-        // Calculate center coordinates in original dimensions
+        const safeScale = scale > 0 ? scale : 1;
+        const original_x_min = box.x / safeScale,
+          original_y_min = box.y / safeScale;
+        const original_box_width = box.width / safeScale,
+          original_box_height = box.height / safeScale;
         const original_x_center = original_x_min + original_box_width / 2;
         const original_y_center = original_y_min + original_box_height / 2;
 
-        // Normalize coordinates relative to original image dimensions
-        const norm_x_center = original_x_center / imgData.originalWidth;
-        const norm_y_center = original_y_center / imgData.originalHeight;
-        const norm_width = original_box_width / imgData.originalWidth;
-        const norm_height = original_box_height / imgData.originalHeight;
+        // Normalize and clamp
+        const clamp = (val) => Math.max(0.0, Math.min(1.0, val));
+        const norm_x_center = clamp(original_x_center / imgData.originalWidth);
+        const norm_y_center = clamp(original_y_center / imgData.originalHeight);
+        const norm_width = clamp(original_box_width / imgData.originalWidth);
+        const norm_height = clamp(original_box_height / imgData.originalHeight);
 
-        // --- Validation and Clamping ---
         if (
           isNaN(norm_x_center) ||
           isNaN(norm_y_center) ||
           isNaN(norm_width) ||
           isNaN(norm_height) ||
           imgData.originalWidth <= 0 ||
-          imgData.originalHeight <= 0 // Added check for valid image dimensions
+          imgData.originalHeight <= 0
         ) {
           console.error(
-            `Invalid calculation result for box (label: ${box.label}) in image ${imgData.filename}. ` +
-              `Orig Img W: ${imgData.originalWidth}, H: ${imgData.originalHeight}, Scale: ${scale}. ` +
-              `Norm Center: (${norm_x_center}, ${norm_y_center}), Norm Size: (${norm_width}, ${norm_height}). Skipping box.`,
+            `Invalid calculation for box (label: ${box.label}) in image ${imgData.filename}. Skipping.`,
           );
           skippedBoxesInImage++;
           return;
         }
-        // Clamp values strictly between 0.0 and 1.0 for YOLO format
-        const clamp = (val) => Math.max(0.0, Math.min(1.0, val));
-
-        // Format: class_id center_x center_y width height (all normalized)
-        yoloContent += `${labelIndex} ${clamp(norm_x_center).toFixed(6)} ${clamp(norm_y_center).toFixed(6)} ${clamp(norm_width).toFixed(6)} ${clamp(norm_height).toFixed(6)}\n`;
+        yoloContent += `${labelIndex} ${norm_x_center.toFixed(6)} ${norm_y_center.toFixed(6)} ${norm_width.toFixed(6)} ${norm_height.toFixed(6)}\n`;
       });
 
       totalSkippedBoxes += skippedBoxesInImage;
-
-      // Only download if there is valid content for this image
       if (yoloContent.length > 0) {
-        // Derive filename: remove original extension, add .txt
         const baseFilename =
           imgData.filename.substring(0, imgData.filename.lastIndexOf(".")) ||
-          imgData.filename; // Handle names with no extension
+          imgData.filename;
         const yoloFilename = `${baseFilename}.txt`;
-
         downloadContent(yoloContent, yoloFilename, "text/plain");
         exportedFiles++;
       } else if (imgData.boxes.length > 0) {
-        // Log if an image had boxes, but all were skipped
         console.warn(
-          `No valid YOLO annotations generated for image ${imgData.filename} (all ${imgData.boxes.length} boxes were skipped).`,
+          `No valid YOLO annotations generated for image ${imgData.filename} (all ${imgData.boxes.length} boxes skipped).`,
         );
         skippedImages++;
       }
-    }); // End loop through imageData
+    });
 
-    // --- Final User Feedback ---
     let message = "";
     if (exportedFiles > 0) {
       message += `${exportedFiles} YOLO annotation file(s) prepared for download.\n`;
@@ -1485,183 +1495,137 @@ document.addEventListener("DOMContentLoaded", function () {
       message += `${skippedImages} image(s) were skipped (no valid annotations).\n`;
     }
     if (totalSkippedBoxes > 0) {
-      message += `${totalSkippedBoxes} individual bounding box(es) were skipped (e.g., unknown label, invalid calculation).\n`;
+      message += `${totalSkippedBoxes} individual box(es) were skipped.\n`;
     }
-
     if (message) {
       alert(message.trim() + "\nCheck console for details.");
     } else if (imageData.length > 0) {
-      // This case means images were loaded, but maybe no boxes drawn at all
       alert("No annotations found to export in YOLO format.");
     }
-    // No alert if no images were loaded initially (already handled)
   }
 
   // --- Function to Delete Current Image ---
   function deleteCurrentImage() {
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
     if (
       currentImageIndex < 0 ||
       currentImageIndex >= imageData.length ||
-      isPredicting ||
-      isModelLoading // Also check model loading
+      blockActions
     ) {
       console.warn(
         "Delete button clicked but no valid image selected or operation in progress.",
       );
       return;
     }
-
     const imageToDelete = imageData[currentImageIndex];
-
-    // Confirmation dialog
     if (
       !confirm(
-        `Are you sure you want to delete image "${imageToDelete.filename}"? \nAll its annotations will be permanently lost.`,
+        `Are you sure you want to delete image "${imageToDelete.filename}"? \nAll its annotations will be lost.`,
       )
     ) {
-      return; // User cancelled
+      return;
     }
 
     console.log(
       `Deleting image index ${currentImageIndex}: ${imageToDelete.filename}`,
     );
-
-    // Remove the image data from the array
     imageData.splice(currentImageIndex, 1);
-
-    let nextIndexToLoad = -1; // Default: no image loaded state
+    let nextIndexToLoad = -1;
 
     if (imageData.length === 0) {
-      // No images left
       nextIndexToLoad = -1;
-      console.log("Last image deleted. Clearing canvas.");
+      console.log("Last image deleted.");
     } else if (currentImageIndex >= imageData.length) {
-      // If the deleted image was the last one in the list, load the new last one
       nextIndexToLoad = imageData.length - 1;
-      console.log("Deleted last image in list. Loading new last image.");
     } else {
-      // Otherwise, load the image that shifted into the current index position
-      // The index itself doesn't need to change conceptually, but we reload it
       nextIndexToLoad = currentImageIndex;
-      console.log(
-        "Deleted image. Loading next image in sequence (which is now at the same index).",
-      );
-    }
+    } // Load image that shifted into current index
 
-    // Load the determined next state
     if (nextIndexToLoad === -1) {
-      clearCanvasAndState(); // Clears canvas, resets state, updates UI
+      clearCanvasAndState();
     } else {
-      // We need to temporarily set currentImageIndex to -1 before loading,
-      // otherwise loadImageData might think it's saving state for the wrong index
-      // This is a bit of a workaround for how state saving is implicitly handled.
       const targetIndex = nextIndexToLoad;
-      currentImageIndex = -1; // Reset before loading
-      loadImageData(targetIndex); // Load the appropriate image
+      currentImageIndex = -1; // Reset before loading to avoid state issues
+      loadImageData(targetIndex);
     }
   }
 
-  // --- Modify handleKeyDown to prevent shortcuts during model loading ---
+  // --- Keyboard Shortcut Handling ---
   function handleKeyDown(event) {
-    // Ignore shortcuts if focus is on an input field or textarea
     const activeElement = document.activeElement;
     const isInputFocused =
       activeElement &&
       (activeElement.tagName === "INPUT" ||
         activeElement.tagName === "TEXTAREA" ||
         activeElement.tagName === "SELECT");
-
-    if (isInputFocused) {
-      return; // Don't interfere with typing
-    }
-
-    // Ignore shortcuts if modifier keys (Ctrl, Alt, Meta) are pressed,
-    // unless specifically designing a shortcut with them.
-    if (event.ctrlKey || event.altKey || event.metaKey) {
+    if (isInputFocused || event.ctrlKey || event.altKey || event.metaKey) {
       return;
-    }
+    } // Ignore if typing or modifier keys pressed
 
-    // Ignore if prediction or model loading is in progress
-    if (isPredicting || isModelLoading) {
+    const blockActions =
+      isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
+    if (blockActions) {
       console.log("Keydown ignored: Operation in progress.");
       return;
-    }
+    } // Ignore during loading/prediction
 
     switch (event.key.toLowerCase()) {
-      case "f": // Next image
+      case "f":
         if (!nextImageBtn.disabled) {
-          console.log("Shortcut 'f' pressed: Navigating next");
           nextImageBtn.click();
           event.preventDefault();
-        } else {
-          console.log("Shortcut 'f' pressed: Navigation disabled");
         }
-        break;
-
-      case "r": // Previous image
+        break; // Next image
+      case "r":
         if (!prevImageBtn.disabled) {
-          console.log("Shortcut 'r' pressed: Navigating previous");
           prevImageBtn.click();
           event.preventDefault();
-        } else {
-          console.log("Shortcut 'r' pressed: Navigation disabled");
         }
-        break;
-
-      case "d": // Switch to Draw tool
+        break; // Previous image
+      case "d":
         if (!drawBoxBtn.disabled) {
-          console.log("Shortcut 'd' pressed: Switching to Draw tool");
           switchTool("draw");
           event.preventDefault();
         }
-        break;
-
-      case "e": // Switch to Edit tool
+        break; // Draw tool
+      case "e":
         if (!editBoxBtn.disabled) {
-          console.log("Shortcut 'e' pressed: Switching to Edit tool");
           switchTool("edit");
           event.preventDefault();
         }
-        break;
-
-      case "l": // Shortcut to Load Model
-        if (!loadModelBtn.disabled) {
-          console.log("Shortcut 'l' pressed: Loading model");
-          loadModelBtn.click();
+        break; // Edit tool
+      case "l": // Load YOLO Model shortcut (adjust if needed)
+        if (!loadYoloModelBtn.disabled) {
+          loadYoloModelBtn.click();
           event.preventDefault();
         }
         break;
-
-      case "a": // Shortcut for AI Assist
-        if (!aiAssistBtn.disabled) {
-          console.log("Shortcut 'a' pressed: AI Assist");
-          aiAssistBtn.click();
+      case "a": // YOLO Assist shortcut (adjust if needed)
+        if (!yoloAssistBtn.disabled) {
+          yoloAssistBtn.click();
           event.preventDefault();
         }
         break;
-
-      case "delete": // Delete selected annotation (if in edit mode and one is selected conceptually)
-      case "backspace": // Also often used for deletion
-        // This requires knowing which annotation is 'selected'. Currently, we only
-        // select via resize handles. A more robust selection mechanism would be needed
-        // for a reliable delete shortcut.
-        // Placeholder logic: If in edit mode and a box was just being resized, delete it? Risky.
-        // A safer approach needs explicit selection (e.g., clicking a box selects it).
-        // console.log("Shortcut 'Delete/Backspace' pressed: Delete Annotation (Not fully implemented)");
-        // TODO: Implement annotation selection first
+      // Add shortcuts for YOLOE? E.g., 'o' for load YOLOE, 'p' for predict YOLOE
+      // case "o": if (!loadYoloeModelBtn.disabled) { loadYoloeModelBtn.click(); event.preventDefault(); } break;
+      // case "p": if (!yoloeAssistBtn.disabled) { yoloeAssistBtn.click(); event.preventDefault(); } break;
+      case "delete":
+      case "backspace":
+        // TODO: Implement robust annotation selection for delete shortcut
+        // if (currentTool === 'edit' && selectedBoxIndex !== -1) { ... deleteAnnotation(selectedBoxIndex) ... }
+        console.log("Delete shortcut pressed (requires selection)");
         break;
-
-      // Add more shortcuts as needed...
     }
   }
 
   // --- Initial Setup on Page Load ---
   function initializeApp() {
     console.log("Initializing Laibel Application...");
-    updateLabelsList(); // Setup labels sidebar (might be empty)
-    updateAnnotationsList(); // Setup annotations sidebar (will be empty)
-    initializeModelButtons(); // Setup initial state for model buttons (includes call to updateNavigationUI)
-    switchTool("draw"); // Set default tool
+    updateLabelsList();
+    updateAnnotationsList();
+    initializeModelButtons(); // Sets up initial button states based on config
+    switchTool("draw");
     redrawCanvas(); // Draw initial placeholder
     console.log("Initialization complete.");
   }

@@ -36,3 +36,28 @@ The primary goal of laibel is to accelerate the often tedious process of image a
 *   Performance Optimization: Improve performance for large datasets and complex annotations.
 *   Advanced Annotation Tools: Support for other segmentation tasks and integration of custom models, such as versions ofSegment Anything Model (SAM)
 *   Integration with AI Models: Train and evaluate AI models directly within the tool.
+
+## Installation
+
+For manual labeling and lightweight installation, you can quickstart with:
+
+```bash
+git clone https://github.com/bortpro/laibel
+cd laibel
+pip install -r requirements.txt
+```
+
+To launch the app, simply run the app framework:
+
+```bash
+python app.py
+```
+
+For AI powered labeling with the YOLOE assist functionality, a virtual environment is recommended.
+
+```bash
+pip install git+https://github.com/THU-MIG/yoloe.git#subdirectory=third_party/CLIP
+pip install git+https://github.com/THU-MIG/yoloe.git#subdirectory=third_party/ml-mobileclip
+
+wget https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_blt.pt
+```

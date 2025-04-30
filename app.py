@@ -1,3 +1,4 @@
+# venv/laibel/app.py
 from flask import Flask, render_template, request, jsonify
 import os
 import uuid
@@ -8,7 +9,8 @@ from ultralytics import YOLO
 
 # Import the YOLOE module itself, and specific functions/vars if needed elsewhere
 import yoloe_label
-from yoloe_label import load_yoloe_model as load_yoloe_model_internal, predict_yoloe
+# Use the modified load function name directly
+from yoloe_label import load_yoloe_model as load_yoloe_model_with_labels, predict_yoloe
 
 import torch
 
@@ -24,8 +26,8 @@ yolo_model_load_error = None
 is_model_loading = False
 
 # --- YOLOE Model State ---
-# We will primarily rely on checking yoloe_label.yoloe_model directly
 is_yoloe_loading = False
+# We now rely on yoloe_label.yoloe_model and yoloe_label.yoloe_model_classes
 # --- End AI Model State ---
 
 # --- Function to Load YOLO Model ---
@@ -78,33 +80,54 @@ def load_yolo_model():
 @app.route('/')
 def index():
     # Pass model status directly from the source module/variable
+    # Also pass the loaded YOLOE classes if available
+    yoloe_classes = getattr(yoloe_label, 'yoloe_model_classes', [])
+    print(f"Rendering index. YOLOE Status - Model: {yoloe_label.yoloe_model is not None}, Error: {yoloe_label.yoloe_model_load_error}, Classes: {yoloe_classes}")
     return render_template(
         'index.html',
         yolo_model_loaded=yolo_model is not None,
         yolo_model_error=yolo_model_load_error,
         # Check the model directly within the yoloe_label module's namespace
         yoloe_model_loaded=yoloe_label.yoloe_model is not None,
-        yoloe_model_error=yoloe_label.yoloe_model_load_error
+        yoloe_model_error=yoloe_label.yoloe_model_load_error,
+        yoloe_model_classes=yoloe_classes # Pass classes to template/JS if needed
     )
 
-# --- Endpoint to Trigger YOLOE Model Loading ---
+# --- Endpoint to Trigger YOLOE Model Loading (MODIFIED) ---
 @app.route('/load_yoloe_model', methods=['POST'])
 def trigger_load_yoloe_model():
     global is_yoloe_loading
-    # Check the model directly in its module
-    if yoloe_label.yoloe_model:
-        return jsonify({"success": True, "message": "YOLOE model already loaded."})
+    data = request.json
+    requested_labels = data.get('labels') if data else None
+
+    if not requested_labels:
+         print("Load YOLOE request failed: No labels provided in request body.")
+         return jsonify({"success": False, "error": "No labels provided for YOLOE model initialization."}), 400
+
+    print(f"Received request to load YOLOE model with labels: {requested_labels}")
+
+    # Check if model is loaded *and* has the same classes
+    if yoloe_label.yoloe_model and set(requested_labels) == set(yoloe_label.yoloe_model_classes):
+        print(f"YOLOE model already loaded with the requested classes: {requested_labels}")
+        return jsonify({"success": True, "message": f"YOLOE model already loaded with classes: {', '.join(requested_labels)}"})
+
     if is_yoloe_loading:
-        return jsonify({"success": False, "error": "YOLOE model loading already in progress."}), 429
+        print("YOLOE model loading already in progress.")
+        return jsonify({"success": False, "error": "YOLOE model loading already in progress."}), 429 # Too Many Requests
 
     is_yoloe_loading = True
-    # Call the loading function which modifies yoloe_label.yoloe_model
-    success, error_message = load_yoloe_model_internal()
+    # Call the modified loading function, passing the labels
+    # Assuming default model path for now, could make it configurable
+    print(f"Calling load_yoloe_model_with_labels with: {requested_labels}")
+    success, error_message = load_yoloe_model_with_labels(requested_labels)
     is_yoloe_loading = False
 
     if success:
-        return jsonify({"success": True, "message": "YOLOE model loaded successfully."})
+        loaded_classes = getattr(yoloe_label, 'yoloe_model_classes', [])
+        print(f"YOLOE model loaded successfully. Classes set to: {loaded_classes}")
+        return jsonify({"success": True, "message": f"YOLOE model loaded successfully with classes: {', '.join(loaded_classes)}"})
     else:
+        print(f"YOLOE model loading failed: {error_message}")
         return jsonify({"success": False, "error": error_message or "Failed to load YOLOE model."}), 500
 
 # --- Endpoint to Trigger YOLO Model Loading ---
@@ -162,23 +185,30 @@ def ai_assist():
         detected_boxes = []
         if results and len(results) > 0:
             result = results[0]
-            boxes = result.boxes
-            class_names = result.names
+            # Ensure boxes and names are present
+            boxes = getattr(result, 'boxes', None)
+            class_names = getattr(result, 'names', {}) # Use getattr for safety
 
             if boxes is not None:
                 print(f"YOLO Detected {len(boxes)} potential objects.")
                 for box in boxes:
-                    xyxy = box.xyxy[0].cpu().numpy()
-                    conf = float(box.conf[0].cpu().numpy())
-                    cls_index = int(box.cls[0].cpu().numpy())
-                    label = class_names.get(cls_index, f"class_{cls_index}")
-                    detected_boxes.append({
-                        "x_min": int(xyxy[0]), "y_min": int(xyxy[1]),
-                        "x_max": int(xyxy[2]), "y_max": int(xyxy[3]),
-                        "label": label, "confidence": round(conf, 3)
-                    })
+                    # Safely access attributes, converting tensors to CPU and numpy/float/int
+                    try:
+                        xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                        conf = float(box.conf[0].cpu().numpy())
+                        cls_index = int(box.cls[0].cpu().numpy())
+                        label = class_names.get(cls_index, f"class_{cls_index}") # Get label from names dict
+
+                        detected_boxes.append({
+                            "x_min": int(xyxy[0]), "y_min": int(xyxy[1]),
+                            "x_max": int(xyxy[2]), "y_max": int(xyxy[3]),
+                            "label": label, "confidence": round(conf, 3)
+                        })
+                    except (AttributeError, IndexError, TypeError) as box_err:
+                         print(f"Warning: Skipping YOLO box due to processing error: {box_err}. Box data: {box}")
+
             else:
-                print("No boxes found in the YOLO results.")
+                print("No boxes found in the YOLO results object.")
         else:
              print("YOLO Inference returned no results or unexpected format.")
 
@@ -193,18 +223,27 @@ def ai_assist():
 # --- End AI Assist Endpoint ---
 
 
-# --- YOLOE Assist Endpoint ---
+# --- YOLOE Assist Endpoint (MODIFIED) ---
 @app.route('/yoloe_assist', methods=['POST'])
 def yoloe_assist():
     # CRITICAL: Check the model directly in the yoloe_label module's namespace
-    print(f"Checking YOLOE model status in /yoloe_assist: {type(yoloe_label.yoloe_model)}") # Debug print
+    print(f"Checking YOLOE model status in /yoloe_assist: Model loaded = {yoloe_label.yoloe_model is not None}")
     if not yoloe_label.yoloe_model:
         error_msg = "YOLOE AI model is not loaded."
         # Check the error variable directly in the module as well
         if yoloe_label.yoloe_model_load_error:
             error_msg += f" Last known error: {yoloe_label.yoloe_model_load_error}"
-        print(f"YOLOE model check failed in /yoloe_assist. Error: {error_msg}") # Debug print
+        print(f"YOLOE model check failed in /yoloe_assist. Error: {error_msg}")
         return jsonify({"success": False, "error": error_msg}), 503 # Service Unavailable
+
+    # Also check if the classes were loaded correctly
+    loaded_classes = getattr(yoloe_label, 'yoloe_model_classes', [])
+    if not loaded_classes:
+        error_msg = "YOLOE model is loaded, but its class list is missing or empty."
+        print(f"YOLOE assist check failed: {error_msg}")
+        return jsonify({"success": False, "error": error_msg}), 500 # Internal Server Error or 503?
+
+    print(f"YOLOE model ready for prediction with classes: {loaded_classes}")
 
     try:
         data = request.json
@@ -223,32 +262,49 @@ def yoloe_assist():
         print(f"Performing YOLOE inference on image of size {image.size}...")
 
         # Perform prediction using the imported function
-        # This function internally uses yoloe_label.yoloe_model
-        coordinates_list = predict_yoloe(image) # Returns [[x1, y1, x2, y2], ...]
+        # This now returns [{'coords': [x1,y1,x2,y2], 'class_id': id}, ...]
+        predictions = predict_yoloe(image)
 
         detected_boxes = []
-        if coordinates_list:
-            print(f"YOLOE Detected {len(coordinates_list)} bounding boxes.")
-            for coords in coordinates_list:
-                if len(coords) == 4 and all(isinstance(c, (int, float)) for c in coords):
-                    detected_boxes.append({
-                        "x_min": int(coords[0]), "y_min": int(coords[1]),
-                        "x_max": int(coords[2]), "y_max": int(coords[3]),
-                        "label": "box", # Use the default label "box"
-                        "confidence": None
-                    })
-                else:
+        if predictions:
+            print(f"YOLOE raw predictions received: {len(predictions)}")
+            for pred in predictions:
+                coords = pred.get('coords')
+                class_id = pred.get('class_id')
+
+                # Validate coordinates and class_id
+                if not (coords and len(coords) == 4 and all(isinstance(c, (int, float)) for c in coords)):
                     print(f"Warning: Skipping invalid coordinate set from YOLOE: {coords}")
+                    continue
+                if not isinstance(class_id, int) or class_id < 0 or class_id >= len(loaded_classes):
+                    print(f"Warning: Skipping prediction with invalid class_id: {class_id} (available: {len(loaded_classes)})")
+                    continue
+
+                # Get the label name using the class_id and loaded_classes
+                label_name = loaded_classes[class_id]
+
+                detected_boxes.append({
+                    "x_min": int(coords[0]), "y_min": int(coords[1]),
+                    "x_max": int(coords[2]), "y_max": int(coords[3]),
+                    "label": label_name, # Use the dynamically determined label
+                    "confidence": None # Confidence not handled in this version yet
+                })
+
+            print(f"Processed {len(detected_boxes)} valid YOLOE bounding boxes.")
         else:
-            print("YOLOE Inference returned no bounding boxes.")
+            print("YOLOE Inference returned no valid predictions.")
 
         print(f"YOLOE Assist finished. Found {len(detected_boxes)} boxes.")
         return jsonify({"success": True, "boxes": detected_boxes})
 
-    # Catch the specific RuntimeError raised by predict_yoloe if model not loaded
+    # Catch the specific RuntimeError raised by predict_yoloe if model not loaded/configured
     except RuntimeError as e:
          print(f"RuntimeError during YOLOE Assist: {e}")
-         return jsonify({"success": False, "error": str(e)}), 500
+         # Make sure model state reflects the error if it indicates model not loaded
+         if "model is not loaded" in str(e).lower():
+             yoloe_label.yoloe_model = None
+             yoloe_label.yoloe_model_classes = []
+         return jsonify({"success": False, "error": str(e)}), 500 # Or 503 if model not loaded
     except Exception as e:
         print(f"Error during YOLOE Assist processing: {e}")
         import traceback
@@ -258,4 +314,4 @@ def yoloe_assist():
 
 if __name__ == '__main__':
     # use_reloader=False is important!
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=False, use_reloader=False)

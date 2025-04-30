@@ -1,5 +1,6 @@
+// venv/laibel/static/js/script.js
 document.addEventListener("DOMContentLoaded", function () {
-  // --- Configuration ---
+  //
   const MAX_WIDTH = 640;
   const MAX_HEIGHT = 480;
   const handleSize = 8;
@@ -43,6 +44,8 @@ document.addEventListener("DOMContentLoaded", function () {
   let isYoloeLoading = false;
   let yoloeModelLoadError = window.LAIBEL_CONFIG?.yoloeModelLoadError || null;
   let isYoloePredicting = false; // For YOLOE Assist prediction
+  // Store the classes the YOLOE model was loaded with (if passed from backend)
+  let yoloeModelClasses = window.LAIBEL_CONFIG?.yoloeModelClasses || [];
 
   // Canvas setup
   const canvas = document.getElementById("image-canvas");
@@ -111,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Model Button Listeners
   loadYoloModelBtn.addEventListener("click", handleLoadYoloModel);
   yoloAssistBtn.addEventListener("click", handleYoloAssist);
-  loadYoloeModelBtn.addEventListener("click", handleLoadYoloeModel);
+  loadYoloeModelBtn.addEventListener("click", handleLoadYoloeModel); // MODIFIED
   yoloeAssistBtn.addEventListener("click", handleYoloeAssist);
 
   // --- Keyboard Shortcut Listener ---
@@ -329,6 +332,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // YOLOE
     if (isYoloeModelLoaded) {
       console.log("YOLOE Model was already loaded on page initialization.");
+      console.log("YOLOE loaded classes:", yoloeModelClasses);
     } else if (yoloeModelLoadError) {
       console.error("Initial YOLOE model state error:", yoloeModelLoadError);
     }
@@ -391,20 +395,41 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // --- YOLOE Buttons ---
-    loadYoloeModelBtn.disabled = isYoloeModelLoaded || isYoloeLoading;
+    const currentLabelNames = labels.map((l) => l.name);
+    const requiredLabelsMatchLoaded =
+      isYoloeModelLoaded &&
+      yoloeModelClasses.length === currentLabelNames.length &&
+      yoloeModelClasses.every((label) => currentLabelNames.includes(label)) &&
+      currentLabelNames.every((label) => yoloeModelClasses.includes(label));
+
+    // Enable Load button only if model not loaded/loading AND there are labels defined
+    loadYoloeModelBtn.disabled =
+      isYoloeLoading || requiredLabelsMatchLoaded || labels.length === 0;
     yoloeAssistBtn.disabled =
       !hasCurrentIndex ||
-      !isYoloeModelLoaded ||
-      isYoloePredicting ||
-      anyLoading; // Disable if not loaded, predicting, or any model is loading
+      !isYoloeModelLoaded || // Must be loaded
+      !requiredLabelsMatchLoaded || // Must be loaded with current labels
+      isYoloePredicting || // Not currently predicting
+      anyLoading; // No other model loading
 
+    // Update YOLOE button text
     if (isYoloeLoading) {
       loadYoloeModelBtn.textContent = "Loading YOLOE...";
-    } else if (isYoloeModelLoaded) {
-      loadYoloeModelBtn.textContent = "YOLOE Loaded";
+    } else if (requiredLabelsMatchLoaded) {
+      // Show loaded classes if they match
+      const displayClasses =
+        yoloeModelClasses.length > 2
+          ? yoloeModelClasses.slice(0, 2).join(", ") + "..."
+          : yoloeModelClasses.join(", ") || "None";
+      loadYoloeModelBtn.textContent = `YOLOE Loaded (${displayClasses})`;
+    } else if (labels.length === 0) {
+      loadYoloeModelBtn.textContent = "Add Labels to Load";
     } else {
-      loadYoloeModelBtn.textContent = "Load YOLOE Model";
+      // Needs loading or reloading
+      const action = isYoloeModelLoaded ? "Reload" : "Load";
+      loadYoloeModelBtn.textContent = `${action} YOLOE Model`;
     }
+
     if (isYoloePredicting) {
       yoloeAssistBtn.textContent = "YOLOE Predicting...";
     } else {
@@ -695,7 +720,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     currentBoxes.forEach((box, index) => {
       const labelObj = labels.find((l) => l.name === box.label);
-      const color = labelObj ? labelObj.color : "#CCCCCC";
+      const color = labelObj ? labelObj.color : "#CCCCCC"; // Default grey for unknown labels
       const fontColor = getContrastYIQ(color);
 
       if (
@@ -715,66 +740,74 @@ document.addEventListener("DOMContentLoaded", function () {
       ctx.lineWidth = 2;
       ctx.strokeRect(box.x, box.y, box.width, box.height);
 
-      if (box.label) {
-        ctx.fillStyle = color;
-        const text = box.label;
-        ctx.font = "bold 12px Arial";
-        const textMetrics = ctx.measureText(text);
-        const textWidth = textMetrics.width;
-        const textHeight = 16;
-        const textPad = 5;
-        let bgY = box.y - textHeight;
-        if (bgY < 0) {
-          bgY = box.y + 2;
-        }
-        ctx.fillRect(box.x, bgY, textWidth + textPad * 2, textHeight);
-        ctx.fillStyle = fontColor;
-        ctx.fillText(text, box.x + textPad, bgY + textHeight - 4);
+      // Draw label text background and text
+      const text = box.label || "unlabeled"; // Ensure there's always text
+      ctx.font = "bold 12px Arial";
+      const textMetrics = ctx.measureText(text);
+      const textWidth = textMetrics.width;
+      const textHeight = 16; // Approximate height for background
+      const textPad = 5;
+
+      let bgY = box.y - textHeight; // Position above the box
+      // Adjust if the label goes off the top of the canvas
+      if (bgY < 0) {
+        bgY = box.y + 2; // Position slightly inside the box top
       }
 
+      ctx.fillStyle = color; // Background color for the label
+      ctx.fillRect(box.x, bgY, textWidth + textPad * 2, textHeight);
+
+      ctx.fillStyle = fontColor; // Text color
+      ctx.fillText(text, box.x + textPad, bgY + textHeight - 4); // Adjust Y for vertical alignment
+
+      // Draw resize handles if in edit mode
       if (currentTool === "edit") {
         ctx.fillStyle = color;
         ctx.strokeStyle = "white";
         ctx.lineWidth = 1;
         const hs = handleSize / 2;
-        ctx.fillRect(box.x - hs, box.y - hs, handleSize, handleSize);
-        ctx.strokeRect(box.x - hs, box.y - hs, handleSize, handleSize); // TL
+        // Draw filled rectangle and then stroke for outline
+        ctx.fillRect(box.x - hs, box.y - hs, handleSize, handleSize); // TL fill
+        ctx.strokeRect(box.x - hs, box.y - hs, handleSize, handleSize); // TL stroke
+
         ctx.fillRect(
           box.x + box.width - hs,
           box.y - hs,
           handleSize,
           handleSize,
-        );
+        ); // TR fill
         ctx.strokeRect(
           box.x + box.width - hs,
           box.y - hs,
           handleSize,
           handleSize,
-        ); // TR
+        ); // TR stroke
+
         ctx.fillRect(
           box.x - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        );
+        ); // BL fill
         ctx.strokeRect(
           box.x - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        ); // BL
+        ); // BL stroke
+
         ctx.fillRect(
           box.x + box.width - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        );
+        ); // BR fill
         ctx.strokeRect(
           box.x + box.width - hs,
           box.y + box.height - hs,
           handleSize,
           handleSize,
-        ); // BR
+        ); // BR stroke
       }
     });
   }
@@ -804,22 +837,24 @@ document.addEventListener("DOMContentLoaded", function () {
     labels.push({ name: labelName, color: color });
     updateLabelsList();
     updateAnnotationsList(); // Update dropdowns
+    updateNavigationUI(); // Update YOLOE button states based on labels
     newLabelInput.value = "";
     newLabelInput.focus();
 
-    if (labels.length === 1 && currentImageIndex !== -1) {
-      let changed = false;
-      imageData[currentImageIndex].boxes.forEach((box) => {
-        if (box.label === "unlabeled") {
-          box.label = labelName;
-          changed = true;
-        }
-      });
-      if (changed) {
-        redrawCanvas();
-        updateAnnotationsList();
-      }
-    }
+    // Auto-assign the first label to existing 'unlabeled' boxes?
+    // if (labels.length === 1 && currentImageIndex !== -1) {
+    //     let changed = false;
+    //     imageData[currentImageIndex].boxes.forEach((box) => {
+    //         if (box.label === "unlabeled") {
+    //             box.label = labelName;
+    //             changed = true;
+    //         }
+    //     });
+    //     if (changed) {
+    //         redrawCanvas();
+    //         updateAnnotationsList();
+    //     }
+    // }
     console.log(`Added label: ${labelName} (${color})`);
   }
 
@@ -855,7 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const labelNameToDelete = labelToDelete.name;
     if (
       !confirm(
-        `Are you sure you want to delete the label "${labelNameToDelete}"? \nThis will change annotations using this label to 'unlabeled' (or the first available label).`,
+        `Are you sure you want to delete the label "${labelNameToDelete}"? \nThis will change annotations using this label to 'unlabeled'.`,
       )
     ) {
       return;
@@ -863,7 +898,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     console.log(`Deleting label: ${labelNameToDelete}`);
     labels.splice(indexToDelete, 1);
-    const fallbackLabel = labels.length > 0 ? labels[0].name : "unlabeled";
+    const fallbackLabel = "unlabeled"; // Always fallback to unlabeled
 
     imageData.forEach((imgData, imgIndex) => {
       let changed = false;
@@ -874,20 +909,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       });
       if (changed && imgIndex === currentImageIndex) {
+        // Only redraw if the current image was affected
         redrawCanvas();
-        updateAnnotationsList();
+        updateAnnotationsList(); // Update sidebar immediately
       } else if (changed) {
         console.log(`Updated labels in background image: ${imgData.filename}`);
       }
     });
 
-    updateLabelsList();
-    // Redraw/update annotations list if current image was affected or fallback applied
-    if (
-      currentImageIndex !== -1 &&
-      imageData[currentImageIndex].boxes.some((b) => b.label === fallbackLabel)
-    ) {
-      updateAnnotationsList(); // Ensure dropdowns are correct even if canvas didn't change
+    updateLabelsList(); // Update label list display
+    updateNavigationUI(); // Update YOLOE buttons status
+
+    // Update annotation list dropdowns even if current image not redrawn,
+    // as available options changed.
+    if (currentImageIndex !== -1) {
+      updateAnnotationsList();
     }
   }
 
@@ -901,7 +937,9 @@ document.addEventListener("DOMContentLoaded", function () {
     ) {
       annotationsList.innerHTML =
         '<p style="color: var(--text-secondary); font-style: italic; padding: 5px;">No annotations for this image.</p>';
-      boxes = [];
+      // Ensure boxes reference is cleared/reset if needed, though handled by loadImageData
+      boxes =
+        currentImageIndex !== -1 ? imageData[currentImageIndex].boxes : [];
       return;
     }
 
@@ -913,20 +951,17 @@ document.addEventListener("DOMContentLoaded", function () {
       const labelSelect = document.createElement("select");
       labelSelect.className = "annotation-label-select";
       labelSelect.title = `Label for box ${index + 1}`;
-      let currentLabelExists = labels.some((l) => l.name === box.label);
 
-      if (
-        labels.length === 0 ||
-        box.label === "unlabeled" ||
-        !currentLabelExists
-      ) {
-        const option = document.createElement("option");
-        option.value = "unlabeled";
-        option.textContent = "unlabeled";
-        option.selected = box.label === "unlabeled" || !currentLabelExists;
-        labelSelect.appendChild(option);
-      }
+      // Ensure 'unlabeled' option is always present and selected if needed
+      const unlabeledOption = document.createElement("option");
+      unlabeledOption.value = "unlabeled";
+      unlabeledOption.textContent = "unlabeled";
+      let currentLabelExistsInList = labels.some((l) => l.name === box.label);
+      unlabeledOption.selected =
+        !currentLabelExistsInList || box.label === "unlabeled";
+      labelSelect.appendChild(unlabeledOption);
 
+      // Add defined labels
       labels.forEach((label) => {
         const option = document.createElement("option");
         option.value = label.name;
@@ -941,7 +976,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const newLabel = e.target.value;
         imageData[currentImageIndex].boxes[index].label = newLabel;
         console.log(`Box ${index} label changed to: ${newLabel}`);
-        redrawCanvas();
+        redrawCanvas(); // Redraw canvas to show new label color/text
       };
 
       const deleteBtn = document.createElement("button");
@@ -961,22 +996,24 @@ document.addEventListener("DOMContentLoaded", function () {
   function deleteAnnotation(indexToDelete) {
     if (currentImageIndex === -1 || !imageData[currentImageIndex]) return;
 
+    // If currently resizing the box being deleted, reset edit state
     if (isResizing && selectedBoxIndex === indexToDelete) {
       resetEditState();
-      canvas.style.cursor = currentTool === "edit" ? "default" : "crosshair";
+      canvas.style.cursor = currentTool === "edit" ? "default" : "crosshair"; // Reset cursor
     }
 
     imageData[currentImageIndex].boxes.splice(indexToDelete, 1);
     console.log(`Deleted annotation ${indexToDelete + 1}`);
 
-    if (selectedBoxIndex > indexToDelete) {
-      selectedBoxIndex--;
-    } else if (selectedBoxIndex === indexToDelete) {
-      resetEditState();
+    // Adjust selectedBoxIndex if it's affected by the deletion
+    if (selectedBoxIndex === indexToDelete) {
+      resetEditState(); // The selected box is gone
+    } else if (selectedBoxIndex > indexToDelete) {
+      selectedBoxIndex--; // Adjust index for subsequent boxes
     }
 
-    updateAnnotationsList();
-    redrawCanvas();
+    updateAnnotationsList(); // Update the sidebar
+    redrawCanvas(); // Redraw the canvas without the deleted box
   }
 
   // --- Function to handle loading the YOLO model ---
@@ -1023,18 +1060,50 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // --- Function to handle loading the YOLOE model ---
+  // --- Function to handle loading the YOLOE model (MODIFIED) ---
   async function handleLoadYoloeModel() {
-    if (isYoloeModelLoaded || isYoloeLoading) {
-      console.log("YOLOE Model already loaded or loading in progress.");
+    // Get current label names
+    const currentLabelNames = labels.map((l) => l.name);
+
+    if (currentLabelNames.length === 0) {
+      alert("Please define at least one label before loading the YOLOE model.");
       return;
     }
-    console.log("Requesting YOLOE model load...");
+
+    // Check if already loading
+    if (isYoloeLoading) {
+      console.log("YOLOE model loading already in progress.");
+      return;
+    }
+
+    // Check if model is loaded AND classes match exactly
+    const requiredLabelsMatchLoaded =
+      isYoloeModelLoaded &&
+      yoloeModelClasses.length === currentLabelNames.length &&
+      yoloeModelClasses.every((label) => currentLabelNames.includes(label)) &&
+      currentLabelNames.every((label) => yoloeModelClasses.includes(label));
+
+    if (requiredLabelsMatchLoaded) {
+      console.log("YOLOE model already loaded with the current set of labels.");
+      alert("YOLOE model already loaded with the current labels.");
+      return;
+    }
+
+    const action = isYoloeModelLoaded ? "Reloading" : "Requesting";
+    console.log(`${action} YOLOE model load with labels:`, currentLabelNames);
     isYoloeLoading = true;
     updateNavigationUI();
 
     try {
-      const response = await fetch("/load_yoloe_model", { method: "POST" });
+      const response = await fetch("/load_yoloe_model", {
+        method: "POST",
+        // Send the labels in the request body
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ labels: currentLabelNames }),
+      });
+
       if (!response.ok) {
         let errorMsg = `HTTP error ${response.status}`;
         try {
@@ -1047,10 +1116,15 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       const result = await response.json();
       if (result.success) {
-        console.log("YOLOE Model loaded successfully:", result.message || "");
+        console.log(
+          "YOLOE Model loaded/reloaded successfully:",
+          result.message || "",
+        );
         isYoloeModelLoaded = true;
         yoloeModelLoadError = null;
-        alert("YOLOE Model loaded successfully!");
+        // Update the locally stored classes based on success response
+        yoloeModelClasses = [...currentLabelNames]; // Store the labels used for loading
+        alert(result.message || "YOLOE Model loaded successfully!");
       } else {
         throw new Error(
           result.error || "Failed to load YOLOE model. Unknown error.",
@@ -1058,12 +1132,18 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     } catch (error) {
       console.error("Failed to load YOLOE model:", error);
-      isYoloeModelLoaded = false;
+      // Don't assume model is loaded on error
+      // isYoloeModelLoaded = false; // Keep previous state? Or reset? Resetting seems safer.
+      // yoloeModelClasses = [];
       yoloeModelLoadError = error.message;
       alert(`Error loading YOLOE Model: ${error.message}`);
+      // If loading failed, the model might be in an unusable state or still loaded with old classes
+      // Best to reflect that it's *not* ready with the current labels
+      isYoloeModelLoaded = false; // Mark as not correctly loaded for current context
+      yoloeModelClasses = [];
     } finally {
       isYoloeLoading = false;
-      updateNavigationUI();
+      updateNavigationUI(); // Update button states reflecting success/failure
     }
   }
 
@@ -1143,12 +1223,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // --- Function to handle YOLOE AI Assist ---
   async function handleYoloeAssist() {
-    if (!isYoloeModelLoaded) {
+    // Check if model is loaded and classes match
+    const currentLabelNames = labels.map((l) => l.name);
+    const requiredLabelsMatchLoaded =
+      isYoloeModelLoaded &&
+      yoloeModelClasses.length === currentLabelNames.length &&
+      yoloeModelClasses.every((label) => currentLabelNames.includes(label)) &&
+      currentLabelNames.every((label) => yoloeModelClasses.includes(label));
+
+    if (!requiredLabelsMatchLoaded) {
       alert(
-        "YOLOE Model is not loaded. Please click 'Load YOLOE Model' first.",
+        "YOLOE Model is not loaded or not loaded with the current set of labels. Please click 'Load/Reload YOLOE Model'.",
       );
       return;
     }
+
     if (
       currentImageIndex === -1 ||
       !imageData[currentImageIndex] ||
@@ -1165,7 +1254,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const currentImageData = imageData[currentImageIndex];
     console.log(
-      `Requesting YOLOE prediction for: ${currentImageData.filename}`,
+      `Requesting YOLOE prediction for: ${currentImageData.filename} (using classes: ${yoloeModelClasses.join(", ")})`,
     );
     isYoloePredicting = true;
     updateNavigationUI();
@@ -1191,7 +1280,16 @@ document.addEventListener("DOMContentLoaded", function () {
           // Model not loaded server-side?
           errorMsg +=
             ". The YOLOE model might not be loaded on the server. Try loading it again.";
-          isYoloeModelLoaded = false; // Reset frontend state
+          // Reset frontend state as backend state is likely wrong
+          isYoloeModelLoaded = false;
+          yoloeModelClasses = [];
+        } else if (
+          response.status === 500 &&
+          errorMsg.includes("class list is missing")
+        ) {
+          // Specific error if classes mismatch server-side somehow
+          isYoloeModelLoaded = false; // Consider it not loaded correctly
+          yoloeModelClasses = [];
         }
         throw new Error(errorMsg);
       }
@@ -1203,6 +1301,11 @@ document.addEventListener("DOMContentLoaded", function () {
         );
         addPredictionsToCanvas(result.boxes, "YOLOE"); // Pass type for logging
       } else {
+        // Handle specific backend errors if possible
+        if (result.error && result.error.includes("model is not loaded")) {
+          isYoloeModelLoaded = false;
+          yoloeModelClasses = [];
+        }
         throw new Error(
           result.error ||
             "YOLOE Prediction failed: No boxes found or backend error.",
@@ -1213,7 +1316,7 @@ document.addEventListener("DOMContentLoaded", function () {
       alert(`YOLOE Assist Error: ${error.message}`);
     } finally {
       isYoloePredicting = false;
-      updateNavigationUI();
+      updateNavigationUI(); // Update UI reflecting potential state changes on error
       canvas.style.opacity = "1";
       canvas.style.cursor = currentTool === "draw" ? "crosshair" : "default";
     }
@@ -1227,10 +1330,35 @@ document.addEventListener("DOMContentLoaded", function () {
     let boxesAdded = 0;
 
     predictions.forEach((pred) => {
-      const originalX = pred.x_min,
-        originalY = pred.y_min;
-      const originalWidth = pred.x_max - pred.x_min;
-      const originalHeight = pred.y_max - pred.y_min;
+      // Ensure coordinates are valid numbers
+      const originalX = Number(pred.x_min);
+      const originalY = Number(pred.y_min);
+      const originalXMax = Number(pred.x_max);
+      const originalYMax = Number(pred.y_max);
+
+      if (
+        isNaN(originalX) ||
+        isNaN(originalY) ||
+        isNaN(originalXMax) ||
+        isNaN(originalYMax)
+      ) {
+        console.warn(
+          `Skipping ${modelType} predicted box due to non-numeric coordinates:`,
+          pred,
+        );
+        return;
+      }
+
+      const originalWidth = originalXMax - originalX;
+      const originalHeight = originalYMax - originalY;
+
+      if (originalWidth <= 0 || originalHeight <= 0) {
+        console.warn(
+          `Skipping ${modelType} predicted box with zero or negative dimensions:`,
+          pred,
+        );
+        return;
+      }
 
       const canvasX = Math.round(originalX * currentScaleRatio);
       const canvasY = Math.round(originalY * currentScaleRatio);
@@ -1245,22 +1373,39 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       const labelName = pred.label || "unlabeled"; // Default label if missing
+
+      // Check if the predicted label exists in our defined labels.
+      // If not, we still add it, but log a message.
       if (!labels.some((l) => l.name === labelName)) {
         console.log(
-          `${modelType} predicted label "${labelName}" not in user-defined labels. Using directly. Consider adding it.`,
+          `${modelType} predicted label "${labelName}" which is not currently defined in the UI. Adding box with this label. Consider adding "${labelName}" to the labels list.`,
         );
-        // Optional: Add automatically
-        // const color = getRandomColor(); labels.push({ name: labelName, color: color }); updateLabelsList();
+        // You could optionally auto-add it here:
+        // if (!labels.some(l => l.name === labelName)) {
+        //     const color = getRandomColor();
+        //     labels.push({ name: labelName, color: color });
+        //     updateLabelsList(); // Update UI
+        //     updateNavigationUI(); // Update model buttons
+        // }
       }
 
       const newBox = {
-        x: canvasX,
-        y: canvasY,
-        width: canvasWidth,
-        height: canvasHeight,
+        x: Math.max(0, canvasX), // Clamp coordinates to canvas bounds
+        y: Math.max(0, canvasY),
+        width: Math.min(canvasWidth, canvas.width - Math.max(0, canvasX)),
+        height: Math.min(canvasHeight, canvas.height - Math.max(0, canvasY)),
         label: labelName,
-        // confidence: pred.confidence // Could store this if needed
+        confidence: pred.confidence, // Store confidence if provided
       };
+
+      // Final check on clamped dimensions
+      if (newBox.width < minBoxSize || newBox.height < minBoxSize) {
+        console.warn(
+          `Skipping ${modelType} predicted box for label '${labelName}' after clamping - too small.`,
+        );
+        return;
+      }
+
       currentImageData.boxes.push(newBox);
       boxesAdded++;
     });
@@ -1270,12 +1415,14 @@ document.addEventListener("DOMContentLoaded", function () {
         `Added ${boxesAdded} ${modelType} predicted boxes to the canvas.`,
       );
       redrawCanvas();
-      updateAnnotationsList();
+      updateAnnotationsList(); // Update the sidebar list
+      // Optional: Give user feedback
       // alert(`${boxesAdded} boxes added by ${modelType} Assist.`);
     } else {
       console.log(
         `No valid boxes were added from the ${modelType} prediction results.`,
       );
+      // Optional: Give user feedback
       // alert(`${modelType} Assist finished, but no new boxes met the criteria.`);
     }
   }
@@ -1287,24 +1434,32 @@ document.addEventListener("DOMContentLoaded", function () {
     for (let i = 0; i < 6; i++) {
       color += letters[Math.floor(Math.random() * 16)];
     }
-    const r = parseInt(color.slice(1, 3), 16),
-      g = parseInt(color.slice(3, 5), 16),
-      b = parseInt(color.slice(5, 7), 16);
-    if (r > 200 && g > 200 && b > 200) {
-      return getRandomColor();
-    } // Retry if too light
+    // Check brightness (simple check)
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    // Avoid very light or very dark colors for better visibility against text/handles
+    if (brightness > 220 || brightness < 40) {
+      return getRandomColor(); // Retry
+    }
     return color;
   }
 
   function getContrastYIQ(hexcolor) {
+    if (!hexcolor || typeof hexcolor !== "string") return "#000000"; // Default black for invalid input
     if (hexcolor.startsWith("#")) {
       hexcolor = hexcolor.slice(1);
     }
-    const r = parseInt(hexcolor.substr(0, 2), 16),
-      g = parseInt(hexcolor.substr(2, 2), 16),
-      b = parseInt(hexcolor.substr(4, 2), 16);
+    if (hexcolor.length !== 6) return "#000000"; // Default black for invalid length
+
+    const r = parseInt(hexcolor.substr(0, 2), 16);
+    const g = parseInt(hexcolor.substr(2, 2), 16);
+    const b = parseInt(hexcolor.substr(4, 2), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return "#000000"; // Default black if parsing failed
+
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-    return yiq >= 128 ? "#000000" : "#FFFFFF";
+    return yiq >= 128 ? "#000000" : "#FFFFFF"; // Black text on light colors, White text on dark colors
   }
 
   function escapeHtml(unsafe) {
@@ -1352,6 +1507,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const allAnnotations = {
+      // Include defined labels in the export
       labels: labels.map((l) => ({ name: l.name, color: l.color })),
       annotations_by_image: imageData.map((imgData) => ({
         image_filename: imgData.filename,
@@ -1360,12 +1516,22 @@ document.addEventListener("DOMContentLoaded", function () {
         boxes: imgData.boxes
           .map((box) => {
             const scale = imgData.scaleRatio;
-            const safeScale = scale > 0 ? scale : 1;
-            const x_min = Math.round(box.x / safeScale),
-              y_min = Math.round(box.y / safeScale);
-            const x_max = Math.round((box.x + box.width) / safeScale),
-              y_max = Math.round((box.y + box.height) / safeScale);
-            // Clamp coordinates
+            // Handle potential division by zero or invalid scale
+            const safeScale = scale > 0 && isFinite(scale) ? scale : 1;
+
+            // Calculate original coordinates
+            let x_min = box.x / safeScale;
+            let y_min = box.y / safeScale;
+            let x_max = (box.x + box.width) / safeScale;
+            let y_max = (box.y + box.height) / safeScale;
+
+            // Round to nearest integer
+            x_min = Math.round(x_min);
+            y_min = Math.round(y_min);
+            x_max = Math.round(x_max);
+            y_max = Math.round(y_max);
+
+            // Clamp coordinates strictly within image bounds [0, width/height]
             const clamped_x_min = Math.max(
               0,
               Math.min(x_min, imgData.originalWidth),
@@ -1374,6 +1540,7 @@ document.addEventListener("DOMContentLoaded", function () {
               0,
               Math.min(y_min, imgData.originalHeight),
             );
+            // Ensure max is at least min, and within bounds
             const clamped_x_max = Math.max(
               clamped_x_min,
               Math.min(x_max, imgData.originalWidth),
@@ -1382,22 +1549,35 @@ document.addEventListener("DOMContentLoaded", function () {
               clamped_y_min,
               Math.min(y_max, imgData.originalHeight),
             );
+
+            // Final check: width/height must be > 0 after clamping
+            if (
+              clamped_x_max <= clamped_x_min ||
+              clamped_y_max <= clamped_y_min
+            ) {
+              console.warn(
+                `Filtering out zero-area box after clamping for image ${imgData.filename}:`,
+                box,
+              );
+              return null; // Mark for filtering
+            }
+
             return {
               x_min: clamped_x_min,
               y_min: clamped_y_min,
               x_max: clamped_x_max,
               y_max: clamped_y_max,
-              label: box.label,
+              label: box.label || "unlabeled", // Ensure label exists
             };
           })
-          .filter((b) => b.x_max - b.x_min > 0 && b.y_max - b.y_min > 0), // Filter zero-area boxes
+          .filter((b) => b !== null), // Remove null entries (filtered boxes)
       })),
     };
     const jsonStr = JSON.stringify(allAnnotations, null, 2);
     console.log("Exporting all annotations as JSON.");
     downloadContent(
       jsonStr,
-      `all_annotations_${Date.now()}.json`,
+      `laibel_annotations_${Date.now()}.json`, // Changed filename slightly
       "application/json",
     );
   }
@@ -1422,12 +1602,16 @@ document.addEventListener("DOMContentLoaded", function () {
       totalSkippedBoxes = 0;
 
     imageData.forEach((imgData) => {
+      // Skip images with no boxes early
       if (!imgData.boxes || imgData.boxes.length === 0) {
-        skippedImages++;
+        // Don't count this as skipped if it never had annotations
+        // skippedImages++;
         return;
       }
+
       let yoloContent = "";
       let skippedBoxesInImage = 0;
+      let validBoxesInImage = 0;
 
       imgData.boxes.forEach((box) => {
         const labelIndex = labelIndexMap.get(box.label);
@@ -1438,41 +1622,64 @@ document.addEventListener("DOMContentLoaded", function () {
           skippedBoxesInImage++;
           return;
         }
-        const scale = imgData.scaleRatio;
-        const safeScale = scale > 0 ? scale : 1;
-        const original_x_min = box.x / safeScale,
-          original_y_min = box.y / safeScale;
-        const original_box_width = box.width / safeScale,
-          original_box_height = box.height / safeScale;
-        const original_x_center = original_x_min + original_box_width / 2;
-        const original_y_center = original_y_min + original_box_height / 2;
 
-        // Normalize and clamp
-        const clamp = (val) => Math.max(0.0, Math.min(1.0, val));
-        const norm_x_center = clamp(original_x_center / imgData.originalWidth);
-        const norm_y_center = clamp(original_y_center / imgData.originalHeight);
-        const norm_width = clamp(original_box_width / imgData.originalWidth);
-        const norm_height = clamp(original_box_height / imgData.originalHeight);
-
-        if (
-          isNaN(norm_x_center) ||
-          isNaN(norm_y_center) ||
-          isNaN(norm_width) ||
-          isNaN(norm_height) ||
-          imgData.originalWidth <= 0 ||
-          imgData.originalHeight <= 0
-        ) {
+        // Validate image dimensions
+        if (imgData.originalWidth <= 0 || imgData.originalHeight <= 0) {
           console.error(
-            `Invalid calculation for box (label: ${box.label}) in image ${imgData.filename}. Skipping.`,
+            `Skipping box: Invalid image dimensions (${imgData.originalWidth}x${imgData.originalHeight}) for image ${imgData.filename}.`,
           );
           skippedBoxesInImage++;
           return;
         }
-        yoloContent += `${labelIndex} ${norm_x_center.toFixed(6)} ${norm_y_center.toFixed(6)} ${norm_width.toFixed(6)} ${norm_height.toFixed(6)}\n`;
+
+        const scale = imgData.scaleRatio;
+        const safeScale = scale > 0 && isFinite(scale) ? scale : 1;
+
+        // Calculate original coordinates (center x, center y, width, height)
+        const original_x = box.x / safeScale;
+        const original_y = box.y / safeScale;
+        const original_box_width = box.width / safeScale;
+        const original_box_height = box.height / safeScale;
+
+        const original_x_center = original_x + original_box_width / 2;
+        const original_y_center = original_y + original_box_height / 2;
+
+        // Normalize coordinates [0.0, 1.0]
+        const norm_x_center = original_x_center / imgData.originalWidth;
+        const norm_y_center = original_y_center / imgData.originalHeight;
+        const norm_width = original_box_width / imgData.originalWidth;
+        const norm_height = original_box_height / imgData.originalHeight;
+
+        // Clamp normalized values to [0.0, 1.0]
+        const clamp = (val) => Math.max(0.0, Math.min(1.0, val));
+        const clamped_norm_x_center = clamp(norm_x_center);
+        const clamped_norm_y_center = clamp(norm_y_center);
+        const clamped_norm_width = clamp(norm_width);
+        const clamped_norm_height = clamp(norm_height);
+
+        // Validate calculated values and dimensions before adding
+        if (
+          isNaN(clamped_norm_x_center) ||
+          isNaN(clamped_norm_y_center) ||
+          isNaN(clamped_norm_width) ||
+          isNaN(clamped_norm_height) ||
+          clamped_norm_width <= 0 || // Width and height must be > 0
+          clamped_norm_height <= 0
+        ) {
+          console.error(
+            `Invalid YOLO calculation for box (label: ${box.label}) in image ${imgData.filename}. Skipping. Values: xc=${clamped_norm_x_center}, yc=${clamped_norm_y_center}, w=${clamped_norm_width}, h=${clamped_norm_height}`,
+          );
+          skippedBoxesInImage++;
+          return;
+        }
+        yoloContent += `${labelIndex} ${clamped_norm_x_center.toFixed(6)} ${clamped_norm_y_center.toFixed(6)} ${clamped_norm_width.toFixed(6)} ${clamped_norm_height.toFixed(6)}\n`;
+        validBoxesInImage++;
       });
 
       totalSkippedBoxes += skippedBoxesInImage;
-      if (yoloContent.length > 0) {
+
+      // Only download if there was at least one valid box written to the content
+      if (validBoxesInImage > 0) {
         const baseFilename =
           imgData.filename.substring(0, imgData.filename.lastIndexOf(".")) ||
           imgData.filename;
@@ -1480,27 +1687,40 @@ document.addEventListener("DOMContentLoaded", function () {
         downloadContent(yoloContent, yoloFilename, "text/plain");
         exportedFiles++;
       } else if (imgData.boxes.length > 0) {
+        // Log if an image had boxes, but none were valid for export
         console.warn(
-          `No valid YOLO annotations generated for image ${imgData.filename} (all ${imgData.boxes.length} boxes skipped).`,
+          `No valid YOLO annotations generated for image ${imgData.filename} (all ${imgData.boxes.length} boxes skipped or invalid).`,
         );
         skippedImages++;
       }
     });
 
+    // --- Report Results ---
     let message = "";
     if (exportedFiles > 0) {
       message += `${exportedFiles} YOLO annotation file(s) prepared for download.\n`;
     }
     if (skippedImages > 0) {
-      message += `${skippedImages} image(s) were skipped (no valid annotations).\n`;
+      message += `${skippedImages} image(s) had annotations, but none were valid for YOLO export.\n`;
     }
     if (totalSkippedBoxes > 0) {
-      message += `${totalSkippedBoxes} individual box(es) were skipped.\n`;
+      message += `${totalSkippedBoxes} individual box(es) were skipped due to missing labels or calculation errors.\n`;
     }
+
     if (message) {
       alert(message.trim() + "\nCheck console for details.");
-    } else if (imageData.length > 0) {
-      alert("No annotations found to export in YOLO format.");
+    } else if (
+      imageData.length > 0 &&
+      !imageData.some((d) => d.boxes?.length > 0)
+    ) {
+      alert("No annotations found across all images to export in YOLO format.");
+    } else if (imageData.length === 0) {
+      // Already handled at the start
+    } else {
+      // This case means images exist, annotations exist, but somehow nothing was exported or skipped
+      alert(
+        "YOLO export finished. No files were generated. Check console for potential issues.",
+      );
     }
   }
 
@@ -1534,21 +1754,28 @@ document.addEventListener("DOMContentLoaded", function () {
     let nextIndexToLoad = -1;
 
     if (imageData.length === 0) {
+      // No images left
       nextIndexToLoad = -1;
       console.log("Last image deleted.");
     } else if (currentImageIndex >= imageData.length) {
+      // If the last image was deleted, load the new last image
       nextIndexToLoad = imageData.length - 1;
     } else {
+      // Otherwise, load the image that shifted into the current index
       nextIndexToLoad = currentImageIndex;
-    } // Load image that shifted into current index
+    }
 
+    // Perform the load/clear action
     if (nextIndexToLoad === -1) {
       clearCanvasAndState();
     } else {
+      // Temporarily set index to -1 to ensure loadImageData correctly updates state
       const targetIndex = nextIndexToLoad;
-      currentImageIndex = -1; // Reset before loading to avoid state issues
+      currentImageIndex = -1;
       loadImageData(targetIndex);
     }
+    // Update UI after loading/clearing is done
+    updateNavigationUI();
   }
 
   // --- Keyboard Shortcut Handling ---
@@ -1559,63 +1786,89 @@ document.addEventListener("DOMContentLoaded", function () {
       (activeElement.tagName === "INPUT" ||
         activeElement.tagName === "TEXTAREA" ||
         activeElement.tagName === "SELECT");
+
+    // Ignore if typing in an input/select or if modifier keys (Ctrl, Alt, Meta) are pressed
     if (isInputFocused || event.ctrlKey || event.altKey || event.metaKey) {
       return;
-    } // Ignore if typing or modifier keys pressed
+    }
 
+    // Ignore if any model operation is in progress
     const blockActions =
       isYoloLoading || isYoloeLoading || isYoloPredicting || isYoloePredicting;
     if (blockActions) {
       console.log("Keydown ignored: Operation in progress.");
       return;
-    } // Ignore during loading/prediction
+    }
+
+    // Prevent default browser behavior for handled keys
+    let preventDefault = true;
 
     switch (event.key.toLowerCase()) {
-      case "f":
+      case "f": // Next image ('f' or ArrowRight)
+      case "arrowright":
         if (!nextImageBtn.disabled) {
           nextImageBtn.click();
-          event.preventDefault();
         }
-        break; // Next image
-      case "r":
+        break;
+      case "d": // Previous image ('d' or ArrowLeft) - Changed from 'r'
+      case "arrowleft":
         if (!prevImageBtn.disabled) {
           prevImageBtn.click();
-          event.preventDefault();
         }
-        break; // Previous image
-      case "d":
+        break;
+      case "w": // Draw tool ('w') - Changed from 'd'
         if (!drawBoxBtn.disabled) {
           switchTool("draw");
-          event.preventDefault();
         }
-        break; // Draw tool
-      case "e":
+        break;
+      case "e": // Edit tool ('e')
         if (!editBoxBtn.disabled) {
           switchTool("edit");
-          event.preventDefault();
         }
-        break; // Edit tool
-      case "l": // Load YOLO Model shortcut (adjust if needed)
+        break;
+      case "q": // Load/Reload YOLOE Model ('q') - Changed from unused
+        if (!loadYoloeModelBtn.disabled) {
+          loadYoloeModelBtn.click();
+        }
+        break;
+      case "a": // YOLOE Assist ('a') - Changed from YOLO Assist
+        if (!yoloeAssistBtn.disabled) {
+          yoloeAssistBtn.click();
+        }
+        break;
+      case "s": // Load YOLO Model ('s') - Changed from unused
         if (!loadYoloModelBtn.disabled) {
           loadYoloModelBtn.click();
-          event.preventDefault();
         }
         break;
-      case "a": // YOLO Assist shortcut (adjust if needed)
+      case "z": // YOLO Assist ('z') - Changed from unused
         if (!yoloAssistBtn.disabled) {
           yoloAssistBtn.click();
-          event.preventDefault();
         }
         break;
-      // Add shortcuts for YOLOE? E.g., 'o' for load YOLOE, 'p' for predict YOLOE
-      // case "o": if (!loadYoloeModelBtn.disabled) { loadYoloeModelBtn.click(); event.preventDefault(); } break;
-      // case "p": if (!yoloeAssistBtn.disabled) { yoloeAssistBtn.click(); event.preventDefault(); } break;
       case "delete":
       case "backspace":
-        // TODO: Implement robust annotation selection for delete shortcut
-        // if (currentTool === 'edit' && selectedBoxIndex !== -1) { ... deleteAnnotation(selectedBoxIndex) ... }
-        console.log("Delete shortcut pressed (requires selection)");
+        // Delete selected annotation if in edit mode and a box is selected via handle grab
+        if (currentTool === "edit" && selectedBoxIndex !== -1) {
+          console.log(
+            `Delete shortcut: Deleting annotation ${selectedBoxIndex + 1}`,
+          );
+          deleteAnnotation(selectedBoxIndex);
+          // Note: resetEditState happens inside deleteAnnotation if needed
+        } else {
+          console.log(
+            "Delete shortcut pressed, but no annotation selected in edit mode.",
+          );
+          preventDefault = false; // Don't prevent default if not deleting
+        }
         break;
+      default:
+        preventDefault = false; // Don't prevent default for unhandled keys
+        break;
+    }
+
+    if (preventDefault) {
+      event.preventDefault();
     }
   }
 
@@ -1628,6 +1881,7 @@ document.addEventListener("DOMContentLoaded", function () {
     switchTool("draw");
     redrawCanvas(); // Draw initial placeholder
     console.log("Initialization complete.");
+    console.log("Initial LAIBEL_CONFIG:", window.LAIBEL_CONFIG);
   }
 
   // Run initialization

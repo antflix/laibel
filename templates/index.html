@@ -15,11 +15,14 @@
                 yoloModelInitiallyLoaded: {{ yolo_model_loaded | tojson }},
                 yoloModelLoadError: {{ yolo_model_error | tojson }},
                 yoloeModelInitiallyLoaded: {{ yoloe_model_loaded | tojson }},
-                yoloeModelLoadError: {{ yoloe_model_error | tojson }}
+                yoloeModelLoadError: {{ yoloe_model_error | tojson }},
+                // Pass the classes loaded on the server (if any) on initial page load
+                yoloeModelClasses: {{ yoloe_model_classes | tojson }}
             };
         </script>
     </head>
     <body>
+        <!-- Rest of the body remains the same -->
         <div class="container">
             <header>
                 <h1>Laibel</h1>
@@ -28,17 +31,20 @@
             <main>
                 <div class="workspace">
                     <div class="sidebar">
-                        <!-- Sidebar content remains the same -->
+                        <!-- Sidebar: Tools -->
                         <div class="tool-section">
                             <h3>Tools</h3>
                             <button id="draw-box-btn" class="btn active">
-                                Draw Box
+                                Draw Box (W)
+                                <!-- Added shortcut hint -->
                             </button>
                             <button id="edit-box-btn" class="btn">
-                                Edit Box
+                                Edit Box (E)
+                                <!-- Added shortcut hint -->
                             </button>
                         </div>
 
+                        <!-- Sidebar: Labels -->
                         <div class="labels-section">
                             <h3>Labels</h3>
                             <div class="label-input">
@@ -56,6 +62,7 @@
                             </div>
                         </div>
 
+                        <!-- Sidebar: Annotations -->
                         <div class="annotations-section">
                             <h3>Annotations</h3>
                             <div id="annotations-list" class="annotations-list">
@@ -63,27 +70,51 @@
                             </div>
                         </div>
                     </div>
+                    <!-- End Sidebar -->
 
                     <div class="canvas-container">
+                        <!-- Canvas Tools -->
                         <div class="canvas-tools">
                             <button id="upload-btn" class="btn">
                                 Upload Images
                             </button>
 
                             <!-- YOLO Model Buttons -->
-                            <button id="load-yolo-model-btn" class="btn">
-                                Load YOLO Model
+                            <button
+                                id="load-yolo-model-btn"
+                                class="btn"
+                                title="Load standard YOLO model (Shortcut: S)"
+                            >
+                                Load YOLO (S)
+                                <!-- Added shortcut hint -->
                             </button>
-                            <button id="yolo-assist-btn" class="btn" disabled>
-                                YOLO Assist
+                            <button
+                                id="yolo-assist-btn"
+                                class="btn"
+                                disabled
+                                title="Run YOLO object detection (Shortcut: Z)"
+                            >
+                                YOLO Assist (Z)
+                                <!-- Added shortcut hint -->
                             </button>
 
                             <!-- YOLOE Model Buttons -->
-                            <button id="load-yoloe-model-btn" class="btn">
-                                Load YOLOE Model
+                            <button
+                                id="load-yoloe-model-btn"
+                                class="btn"
+                                title="Load/Reload YOLOE model with current labels (Shortcut: Q)"
+                            >
+                                Load YOLOE (Q)
+                                <!-- Added shortcut hint -->
                             </button>
-                            <button id="yoloe-assist-btn" class="btn" disabled>
-                                YOLOE Assist
+                            <button
+                                id="yoloe-assist-btn"
+                                class="btn"
+                                disabled
+                                title="Run YOLOE object detection with current labels (Shortcut: A)"
+                            >
+                                YOLOE Assist (A)
+                                <!-- Added shortcut hint -->
                             </button>
 
                             <input
@@ -94,54 +125,72 @@
                                 multiple
                             />
 
+                            <!-- Navigation -->
                             <div class="navigation-controls">
                                 <button
                                     id="prev-image-btn"
                                     class="btn"
                                     disabled
+                                    title="Previous Image (Shortcut: D or Left Arrow)"
                                 >
-                                    &lt; Prev
+                                    &lt; Prev (D)
+                                    <!-- Added shortcut hint -->
                                 </button>
                                 <span id="image-info">No images loaded</span>
                                 <button
                                     id="next-image-btn"
                                     class="btn"
                                     disabled
+                                    title="Next Image (Shortcut: F or Right Arrow)"
                                 >
-                                    Next &gt;
+                                    Next (F) &gt;
+                                    <!-- Added shortcut hint -->
                                 </button>
                             </div>
                             <button
                                 id="delete-image-btn"
                                 class="btn btn-danger"
                                 disabled
+                                title="Delete the currently displayed image"
                             >
                                 Delete Image
                             </button>
 
+                            <!-- Export Buttons -->
                             <div class="save-export-group">
-                                <button id="save-btn" class="btn primary">
+                                <button
+                                    id="save-btn"
+                                    class="btn primary"
+                                    title="Export all annotations in JSON format"
+                                >
                                     Export JSON
                                 </button>
                                 <button
                                     id="export-yolo-btn"
                                     class="btn primary"
+                                    title="Export annotations in YOLO .txt format (one file per image)"
                                 >
                                     Export YOLO
                                 </button>
                             </div>
                         </div>
+                        <!-- End Canvas Tools -->
+
+                        <!-- Canvas Wrapper -->
                         <div class="canvas-wrapper">
                             <canvas id="image-canvas"></canvas>
                         </div>
                     </div>
+                    <!-- End Canvas Container -->
                 </div>
+                <!-- End Workspace -->
             </main>
 
             <footer>
                 <p>Laibel</p>
             </footer>
         </div>
+        <!-- End Container -->
 
         <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     </body>

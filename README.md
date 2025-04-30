@@ -60,4 +60,5 @@ pip install git+https://github.com/THU-MIG/yoloe.git#subdirectory=third_party/CL
 pip install git+https://github.com/THU-MIG/yoloe.git#subdirectory=third_party/ml-mobileclip
 
 wget https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/mobileclip_blt.pt
+wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yoloe-11s-seg.pt
 ```

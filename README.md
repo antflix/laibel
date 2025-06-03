@@ -66,6 +66,6 @@ wget https://github.com/ultralytics/assets/releases/download/v8.3.0/yoloe-11s-se
 To install via Docker, a recommended Dockerfile is provided:
 
 ```bash
-docker build -t laibel .
-docker run -p 5000:5000 laibel
+docker build -t laibel-app .
+docker run -p 5000:5000 laibel-app
 ```

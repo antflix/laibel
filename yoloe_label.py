@@ -1,6 +1,7 @@
 # venv/laibel/yoloe_label.py
 from ultralytics import YOLOE
 import supervision as sv
+#import habana_frameworks.torch.core as htcore <-- Include if using Intel Gaudi
 import torch
 from PIL import Image
 import os
@@ -12,7 +13,7 @@ from typing import List
 # We'll make the path configurable or keep it standard
 YOLOE_DEFAULT_MODEL_PATH = "yoloe-11s-seg.pt"
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-# REMOVED: NAMES = ["box"] # Class names the model can detect
+# DEVICE = 'hpu' if torch.hpu.is_available()  else 'cpu') <-- Include if using Intel Gaudi
 
 yoloe_model = None
 yoloe_model_load_error = None

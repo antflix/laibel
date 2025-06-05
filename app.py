@@ -314,4 +314,7 @@ def yoloe_assist():
 
 if __name__ == '__main__':
     # use_reloader=False is important!
-    app.run(debug=False, use_reloader=False)
+    port = int(os.environ.get('PORT', 5001))
+    # Run the app, listening on all interfaces (0.0.0.0)
+    # Debug should be False for production
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)

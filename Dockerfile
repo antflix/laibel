@@ -1,5 +1,7 @@
 # Use official Python image with necessary dependencies
 FROM python:3.10-slim-bullseye
+# Use Habana Docker if using Intel Gaudi
+#FROM vault.habana.ai/gaudi-docker/1.21.1/ubuntu24.04/habanalabs/pytorch-installer-2.6.0:latest
 
 # Install system dependencies (including git)
 RUN apt-get update && apt-get install -y --no-install-recommends \

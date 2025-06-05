@@ -69,3 +69,6 @@ To install via Docker, a recommended Dockerfile is provided:
 docker build -t laibel-app .
 docker run -p 5000:5000 laibel-app
 ```
+
+If using Intel Gaudi, please refer to the provided Dockerfile & yoloe_label.py for integration instructions.
+If your accelerator can support PyTorch operations, your accelerator can run Laibel.

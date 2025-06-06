@@ -17,6 +17,7 @@ A lightweight image annotation tool designed for efficient labeling of images to
     *   Export annotations for all images in structured **JSON** format.
     *   Export annotations in the standard **YOLO** `.txt` format, compatible with YOLO & Ultralytics.
 *   **Keyboard Shortcuts:** Quick navigation developed thoughtfully for the user to greatly increase labeling speed.
+*   **AI-Assisted Labeling:** Lightweight background AI model aids in automatic labeling. (YOLOE!)
 
 ### Tech Stack
 
@@ -30,7 +31,6 @@ The primary goal of laibel is to accelerate the often tedious process of image a
 
 **Upcoming Features:**
 
-*   AI-Assisted Labeling: Lightweight background AI model aids in automatic labeling.
 *   Active Learning Labeling: Support active learning labeling.
 *   Batch Annotation: Automate annotation tasks for large datasets.
 *   Performance Optimization: Improve performance for large datasets and complex annotations.

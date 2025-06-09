@@ -72,3 +72,16 @@ docker run -p 5000:5000 laibel-app
 
 If using Intel Gaudi, please refer to the provided Dockerfile & yoloe_label.py for integration instructions.
 If your accelerator can support PyTorch operations, your accelerator can run Laibel.
+
+## 💬 Citation
+
+You can cite Laibel in your publications if this is useful for your research. Here is an example BibTeX entry:
+
+```BibTeX
+@MISC{laibel,
+   author = {Dipro Chakraborty},
+   title = {{lAIbel}},
+   howpublished = "\url{https://github.com/bortpro/laibel/}",
+   year = {2025},
+}
+```

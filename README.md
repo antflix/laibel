@@ -1,4 +1,3 @@
-# lAIbel
 <div align="center">
   <h1><strong>lAIbel</strong></h1>
 </div>
@@ -10,6 +9,9 @@
 </p>
 
 A lightweight image annotation tool designed for efficient labeling of images to create downstream AI models. lAIbel provides a cross-platform browser-based interface for drawing and managing bounding box annotations, streamlining the data preparation phase for computer vision tasks. Labels can be exported in a variety of formats.
+
+# Usage
+[📺 Quickstart Video](https://github.com/bortpro/laibel/releases/download/v0.1.0/quickstart.mp4)
 
 **Core Features:**
 

@@ -12,7 +12,9 @@ A lightweight image annotation tool designed for efficient labeling of images to
 
 # Usage
 [📺 Quickstart Video](https://private-user-images.githubusercontent.com/70864791/457679789-78e0f6f0-536d-475f-89a5-d392f83cede0.mp4?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NTA2MjQ2MTcsIm5iZiI6MTc1MDYyNDMxNywicGF0aCI6Ii83MDg2NDc5MS80NTc2Nzk3ODktNzhlMGY2ZjAtNTM2ZC00NzVmLTg5YTUtZDM5MmY4M2NlZGUwLm1wND9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTA2MjIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwNjIyVDIwMzE1N1omWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPWMyNzQyNWVmNWM4ZWU0ZTNjYTBiY2Q0ODE0YWE0YjgzODljYTk0NTRhMmIzMzE0YzJmY2M0ZTEwZWIyMmI0N2YmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.U6wl8KkDMERMghGVLKTX-Yqv-v8vkBCrVa6q8Avt9aY)
+
 [🎥 Watch YOLO Video](https://github.com/bortpro/laibel/releases/download/v0.1/YOLO.mp4)
+
 [🎥 Watch YOLOE Video](https://github.com/bortpro/laibel/releases/download/v0.1/YOLOE.mp4)
 
 **Core Features:**

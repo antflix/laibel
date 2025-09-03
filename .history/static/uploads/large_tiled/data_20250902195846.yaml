@@ -1,0 +1,12 @@
+train: ../train/images
+
+
+nc: 3
+names: ['data', 'duplex', 'quad',]
+  
+roboflow:
+  workspace: workspace-lf7bo
+  project: walls-yhtq3
+  version: 1
+  license: Public Domain
+  url: https://universe.roboflow.com/workspace-lf7bo/walls-yhtq3/dataset/1

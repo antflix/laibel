@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Laibel</title>
+        <title>Laibel - YOLO Dataset Annotation Tool</title>
         <link
             rel="stylesheet"
             href="{{ url_for('static', filename='css/style.css') }}"
@@ -17,15 +17,16 @@
                 yoloeModelInitiallyLoaded: {{ yoloe_model_loaded | tojson }},
                 yoloeModelLoadError: {{ yoloe_model_error | tojson }},
                 // Pass the classes loaded on the server (if any) on initial page load
-                yoloeModelClasses: {{ yoloe_model_classes | tojson }}
+                yoloeModelClasses: {{ yoloe_model_classes | tojson }},
+                // Pass available datasets
+                datasets: {{ datasets | tojson }}
             };
         </script>
     </head>
     <body>
-        <!-- Rest of the body remains the same -->
         <div class="container">
             <header>
-                <h1>Laibel</h1>
+                <h1>Laibel - YOLO Dataset Annotation Tool</h1>
             </header>
 
             <main>
@@ -36,12 +37,54 @@
                             <h3>Tools</h3>
                             <button id="draw-box-btn" class="btn active">
                                 Draw Box (W)
-                                <!-- Added shortcut hint -->
                             </button>
                             <button id="edit-box-btn" class="btn">
                                 Edit Box (E)
-                                <!-- Added shortcut hint -->
                             </button>
+                        </div>
+
+                        <!-- Sidebar: Dataset Management -->
+                        <div class="dataset-section">
+                            <h3>Dataset Management</h3>
+                            <div class="dataset-controls">
+                                <!-- Dataset Upload -->
+                                <div class="dataset-upload-group">
+                                    <button id="upload-dataset-btn" class="btn primary">
+                                        Upload YOLO Dataset (ZIP)
+                                    </button>
+                                    <input
+                                        type="file"
+                                        id="dataset-upload"
+                                        accept=".zip"
+                                        style="display: none"
+                                    />
+                                </div>
+
+                                <!-- Dataset Selection -->
+                                <div class="dataset-selection">
+                                    <label for="dataset-select" style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: 0.3rem; display: block;">
+                                        Select Dataset:
+                                    </label>
+                                    <select id="dataset-select" class="dataset-select">
+                                        <option value="">Select a dataset...</option>
+                                    </select>
+                                </div>
+
+                                <!-- Split Selection -->
+                                <div class="split-selection">
+                                    <label for="split-select" style="color: var(--text-secondary); font-size: 0.9em; margin-bottom: 0.3rem; display: block;">
+                                        Select Split:
+                                    </label>
+                                    <select id="split-select" class="split-select">
+                                        <option value="">All splits</option>
+                                    </select>
+                                </div>
+
+                                <!-- Load Dataset Button -->
+                                <button id="load-dataset-btn" class="btn" disabled>
+                                    Load Dataset
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Sidebar: Labels -->
@@ -75,103 +118,111 @@
                     <div class="canvas-container">
                         <!-- Canvas Tools -->
                         <div class="canvas-tools">
-                            <button id="upload-btn" class="btn">
-                                Upload Images
-                            </button>
-
-                            <!-- YOLO Model Buttons -->
-                            <button
-                                id="load-yolo-model-btn"
-                                class="btn"
-                                title="Load standard YOLO model (Shortcut: S)"
-                            >
-                                Load YOLO (S)
-                                <!-- Added shortcut hint -->
-                            </button>
-                            <button
-                                id="yolo-assist-btn"
-                                class="btn"
-                                disabled
-                                title="Run YOLO object detection (Shortcut: Z)"
-                            >
-                                YOLO Assist (Z)
-                                <!-- Added shortcut hint -->
-                            </button>
-
-                            <!-- YOLOE Model Buttons -->
-                            <button
-                                id="load-yoloe-model-btn"
-                                class="btn"
-                                title="Load/Reload YOLOE model with current labels (Shortcut: Q)"
-                            >
-                                Load YOLOE (Q)
-                                <!-- Added shortcut hint -->
-                            </button>
-                            <button
-                                id="yoloe-assist-btn"
-                                class="btn"
-                                disabled
-                                title="Run YOLOE object detection with current labels (Shortcut: A)"
-                            >
-                                YOLOE Assist (A)
-                                <!-- Added shortcut hint -->
-                            </button>
-
-                            <input
-                                type="file"
-                                id="image-upload"
-                                accept="image/*"
-                                style="display: none"
-                                multiple
-                            />
-
-                            <!-- Navigation -->
-                            <div class="navigation-controls">
-                                <button
-                                    id="prev-image-btn"
-                                    class="btn"
-                                    disabled
-                                    title="Previous Image (Shortcut: D or Left Arrow)"
-                                >
-                                    &lt; Prev (D)
-                                    <!-- Added shortcut hint -->
+                            <!-- Left Tools -->
+                            <div class="canvas-tools-left">
+                                <button id="upload-btn" class="btn">
+                                    Upload Images
                                 </button>
-                                <span id="image-info">No images loaded</span>
+                                <input
+                                    type="file"
+                                    id="image-upload"
+                                    accept="image/*"
+                                    style="display: none"
+                                    multiple
+                                />
+                            </div>
+
+                            <!-- Center - Navigation -->
+                            <div class="canvas-tools-center">
+                                <div class="navigation-controls">
+                                    <button
+                                        id="prev-image-btn"
+                                        class="btn"
+                                        disabled
+                                        title="Previous Image (Shortcut: D or Left Arrow)"
+                                    >
+                                        &lt; Prev (D)
+                                    </button>
+                                    <span id="image-info">No images loaded</span>
+                                    <button
+                                        id="next-image-btn"
+                                        class="btn"
+                                        disabled
+                                        title="Next Image (Shortcut: F or Right Arrow)"
+                                    >
+                                        Next (F) &gt;
+                                    </button>
+                                </div>
                                 <button
-                                    id="next-image-btn"
-                                    class="btn"
+                                    id="delete-image-btn"
+                                    class="btn btn-danger"
                                     disabled
-                                    title="Next Image (Shortcut: F or Right Arrow)"
+                                    title="Delete the currently displayed image"
                                 >
-                                    Next (F) &gt;
-                                    <!-- Added shortcut hint -->
+                                    Delete Image
                                 </button>
                             </div>
-                            <button
-                                id="delete-image-btn"
-                                class="btn btn-danger"
-                                disabled
-                                title="Delete the currently displayed image"
-                            >
-                                Delete Image
-                            </button>
 
-                            <!-- Export Buttons -->
-                            <div class="save-export-group">
-                                <button
-                                    id="save-btn"
-                                    class="btn primary"
-                                    title="Export all annotations in JSON format"
-                                >
-                                    Export JSON
-                                </button>
-                                <button
-                                    id="export-yolo-btn"
-                                    class="btn primary"
-                                    title="Export annotations in YOLO .txt format (one file per image)"
-                                >
-                                    Export YOLO
-                                </button>
+                            <!-- Right Tools -->
+                            <div class="canvas-tools-right">
+                                <!-- Model Buttons -->
+                                <div class="model-buttons-group">
+                                    <!-- YOLO Model Buttons -->
+                                    <div class="yolo-buttons">
+                                        <button
+                                            id="load-yolo-model-btn"
+                                            class="btn"
+                                            title="Load standard YOLO model (Shortcut: S)"
+                                        >
+                                            Load YOLO (S)
+                                        </button>
+                                        <button
+                                            id="yolo-assist-btn"
+                                            class="btn"
+                                            disabled
+                                            title="Run YOLO object detection (Shortcut: Z)"
+                                        >
+                                            YOLO Assist (Z)
+                                        </button>
+                                    </div>
+
+                                    <!-- YOLOE Model Buttons -->
+                                    <div class="yoloe-buttons">
+                                        <button
+                                            id="load-yoloe-model-btn"
+                                            class="btn"
+                                            title="Load/Reload YOLOE model with current labels (Shortcut: Q)"
+                                        >
+                                            Load YOLOE (Q)
+                                        </button>
+                                        <button
+                                            id="yoloe-assist-btn"
+                                            class="btn"
+                                            disabled
+                                            title="Run YOLOE object detection with current labels (Shortcut: A)"
+                                        >
+                                            YOLOE Assist (A)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Export Buttons -->
+                                <div class="save-export-group">
+                                    <button
+                                        id="save-btn"
+                                        class="btn primary"
+                                        title="Export all annotations in JSON format"
+                                    >
+                                        Export JSON
+                                    </button>
+                                    <button
+                                        id="export-yolo-btn"
+                                        class="btn primary"
+                                        title="Export annotations in YOLO .txt format (one file per image)"
+                                    >
+                                        Export YOLO
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         <!-- End Canvas Tools -->
@@ -187,7 +238,7 @@
             </main>
 
             <footer>
-                <p>Laibel</p>
+                <p>Laibel - YOLO Dataset Annotation Tool | Upload datasets, view/edit annotations, export in multiple formats</p>
             </footer>
         </div>
         <!-- End Container -->

@@ -13,26 +13,26 @@
     --line-height-base: 1.6;
 
     /* Dark Theme Palette */
-    --bg-deep: #1a1d21; /* Deepest background */
-    --bg-primary: #21252b; /* Main background */
-    --bg-secondary: #282c34; /* Slightly lighter bg (sidebar, inputs) */
-    --bg-tertiary: #323840; /* Even lighter (hover, active elements) */
-    --bg-canvas-wrapper: #181a1f; /* Background behind the canvas */
+    --bg-deep: #1a1d21;
+    --bg-primary: #21252b;
+    --bg-secondary: #282c34;
+    --bg-tertiary: #323840;
+    --bg-canvas-wrapper: #181a1f;
 
-    --text-primary: #abb2bf; /* Primary text */
-    --text-secondary: #828a9a; /* Secondary/muted text */
-    --text-on-accent: #ffffff; /* Text on primary buttons */
-    --text-heading: #d7dae0; /* Headings */
+    --text-primary: #abb2bf;
+    --text-secondary: #828a9a;
+    --text-on-accent: #ffffff;
+    --text-heading: #d7dae0;
 
-    --border-primary: #3a4049; /* Primary borders */
-    --border-secondary: #4b515c; /* Secondary/lighter borders */
-    --border-focus: var(--accent-primary); /* Border on focus */
+    --border-primary: #3a4049;
+    --border-secondary: #4b515c;
+    --border-focus: var(--accent-primary);
 
-    --accent-primary: #61afef; /* Primary accent (e.g., blue) */
+    --accent-primary: #61afef;
     --accent-primary-hover: #6abeff;
-    --accent-secondary: #98c379; /* Secondary accent (e.g., green for save/export) */
+    --accent-secondary: #98c379;
     --accent-secondary-hover: #a5d087;
-    --danger-primary: #e06c75; /* Danger/delete (e.g., red) */
+    --danger-primary: #e06c75;
     --danger-hover: #ea7f88;
 
     --shadow-color: rgba(0, 0, 0, 0.2);
@@ -42,10 +42,9 @@
 
     --border-radius-sm: 4px;
     --border-radius-md: 6px;
-    --spacing-unit: 1rem; /* Base for padding/margins */
+    --spacing-unit: 1rem;
 }
 
-/* Apply dark theme preference */
 html {
     color-scheme: dark;
 }
@@ -73,7 +72,7 @@ header {
     padding: calc(var(--spacing-unit) * 0.75) calc(var(--spacing-unit) * 1.5);
     border-bottom: 1px solid var(--border-primary);
     box-shadow: var(--shadow-sm);
-    z-index: 10; /* Keep header above content */
+    z-index: 10;
 }
 
 header h1 {
@@ -88,45 +87,38 @@ footer {
     padding: var(--spacing-unit);
     border-top: 1px solid var(--border-primary);
     font-size: 0.85em;
-    margin-top: auto; /* Pushes footer to bottom */
+    margin-top: auto;
 }
 
 /* --- Main Layout --- */
 main {
     flex: 1;
     padding: var(--spacing-unit);
-    overflow: hidden; /* Prevent main scrollbars */
-    display: flex; /* Use flex here for workspace */
+    overflow: hidden;
+    display: flex;
 }
 
 .workspace {
-    flex: 1; /* Workspace takes full space in main */
+    flex: 1;
     display: flex;
     background-color: var(--bg-primary);
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-md);
-    overflow: hidden; /* Crucial */
+    overflow: hidden;
     border: 1px solid var(--border-primary);
-    /* Removed fixed height calculation */
 }
 
 /* --- Sidebar --- */
 .sidebar {
-    width: 280px; /* Slightly narrower */
-    flex-shrink: 0; /* Prevent shrinking */
+    width: 320px;
+    flex-shrink: 0;
     background-color: var(--bg-secondary);
     padding: var(--spacing-unit);
     overflow-y: auto;
     border-right: 1px solid var(--border-primary);
     display: flex;
     flex-direction: column;
-    gap: calc(var(--spacing-unit) * 1.5); /* Space between sections */
-}
-
-.tool-section,
-.labels-section,
-.annotations-section {
-    /* Removed margin-bottom, using gap in sidebar now */
+    gap: calc(var(--spacing-unit) * 1.5);
 }
 
 h3 {
@@ -138,9 +130,44 @@ h3 {
     padding-bottom: calc(var(--spacing-unit) * 0.3);
 }
 
+/* --- Dataset Management Section --- */
+.dataset-controls {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing-unit) * 0.75);
+}
+
+.dataset-upload-group,
+.dataset-selection,
+.split-selection {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--spacing-unit) * 0.5);
+}
+
+.dataset-select,
+.split-select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--border-radius-md);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition:
+        border-color 0.2s ease,
+        background-color 0.2s ease;
+}
+
+.dataset-select:focus,
+.split-select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    background-color: var(--bg-secondary);
+}
+
 /* --- Canvas Area --- */
 .canvas-container {
-    flex: 1; /* Takes remaining space */
+    flex: 1;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -155,40 +182,48 @@ h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    flex-wrap: wrap;
     gap: calc(var(--spacing-unit) * 0.75);
-    box-shadow: var(--shadow-sm); /* Add subtle shadow below tools */
-    z-index: 5; /* Keep tools above canvas wrapper */
+    box-shadow: var(--shadow-sm);
+    z-index: 5;
+}
+
+.canvas-tools-left,
+.canvas-tools-center,
+.canvas-tools-right {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 0.75);
+    flex-wrap: wrap;
 }
 
 .canvas-wrapper {
-    flex: 1; /* Takes remaining vertical space */
-    overflow: auto; /* Allows scrolling for large canvas */
+    flex: 1;
+    overflow: auto;
     position: relative;
-    background-color: var(--bg-canvas-wrapper); /* Distinct background */
-    display: grid; /* Simpler centering */
-    place-items: center; /* Center canvas */
-    padding: var(--spacing-unit); /* Add padding around canvas */
+    background-color: var(--bg-canvas-wrapper);
+    display: grid;
+    place-items: center;
+    padding: var(--spacing-unit);
 }
 
 canvas {
-    background-color: #fff; /* Keep canvas white for image clarity */
+    background-color: #fff;
     box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
     display: block;
-    max-width: 100%; /* Ensure canvas doesn't overflow wrapper */
+    max-width: 100%;
     max-height: 100%;
     border-radius: var(--border-radius-sm);
-    transition: opacity 0.3s ease; /* Add transition for AI assist opacity change */
+    transition: opacity 0.3s ease;
 }
 
-/* Style for when AI assist is running */
 canvas[style*="opacity: 0.7"] {
     cursor: wait;
 }
 
 /* --- Buttons & Controls --- */
 .btn {
-    padding: 0.5rem 0.9rem; /* Slightly adjusted padding */
+    padding: 0.5rem 0.9rem;
     border: 1px solid var(--border-secondary);
     border-radius: var(--border-radius-md);
     background-color: var(--bg-tertiary);
@@ -198,17 +233,15 @@ canvas[style*="opacity: 0.7"] {
     font-weight: 500;
     transition: all 0.2s ease;
     white-space: nowrap;
-    line-height: 1.2; /* Ensure consistent height */
-    display: inline-flex; /* Align icon and text if needed */
+    line-height: 1.2;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 
 .btn:hover:not(:disabled) {
-    background-color: var(
-        --border-secondary
-    ); /* Use border color for subtle hover */
-    border-color: #565c68; /* Slightly lighter border on hover */
+    background-color: var(--border-secondary);
+    border-color: #565c68;
     color: var(--text-heading);
 }
 
@@ -217,7 +250,6 @@ canvas[style*="opacity: 0.7"] {
     outline-offset: 2px;
 }
 
-/* Active state (e.g., selected tool) */
 .btn.active {
     background-color: var(--accent-primary);
     color: var(--text-on-accent);
@@ -228,11 +260,8 @@ canvas[style*="opacity: 0.7"] {
     border-color: var(--accent-primary-hover);
 }
 
-/* Primary action button (Save/Export) */
 .btn.primary {
-    background-color: var(
-        --accent-secondary
-    ); /* Using green as primary action */
+    background-color: var(--accent-secondary);
     color: var(--text-on-accent);
     border-color: var(--accent-secondary);
 }
@@ -241,7 +270,6 @@ canvas[style*="opacity: 0.7"] {
     border-color: var(--accent-secondary-hover);
 }
 
-/* Danger button */
 .btn.btn-danger {
     background-color: var(--danger-primary);
     color: var(--text-on-accent);
@@ -252,9 +280,8 @@ canvas[style*="opacity: 0.7"] {
     border-color: var(--danger-hover);
 }
 
-/* Disabled state */
 .btn:disabled {
-    background-color: var(--bg-secondary); /* Less prominent background */
+    background-color: var(--bg-secondary);
     color: var(--text-secondary);
     border-color: var(--border-primary);
     cursor: not-allowed;
@@ -271,22 +298,35 @@ canvas[style*="opacity: 0.7"] {
 #image-info {
     font-size: 0.9em;
     color: var(--text-secondary);
-    min-width: 150px; /* Allow more space for filename */
-    max-width: 250px; /* Prevent excessive width */
+    min-width: 180px;
+    max-width: 280px;
     text-align: center;
     font-weight: 500;
-    background-color: var(--bg-primary); /* Match main bg */
+    background-color: var(--bg-primary);
     padding: 0.3rem 0.6rem;
     border-radius: var(--border-radius-sm);
     border: 1px solid var(--border-primary);
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* Add ellipsis for long names */
+    text-overflow: ellipsis;
 }
 
 .save-export-group {
     display: flex;
-    gap: calc(var(--spacing-unit) * 0.5); /* Consistent gap */
+    gap: calc(var(--spacing-unit) * 0.5);
+}
+
+.model-buttons-group {
+    display: flex;
+    gap: calc(var(--spacing-unit) * 0.5);
+    align-items: center;
+}
+
+.yolo-buttons,
+.yoloe-buttons {
+    display: flex;
+    gap: calc(var(--spacing-unit) * 0.3);
+    align-items: center;
 }
 
 /* --- Sidebar Inputs & Lists --- */
@@ -295,63 +335,72 @@ canvas[style*="opacity: 0.7"] {
     margin-bottom: var(--spacing-unit);
 }
 
-/* Style all relevant inputs and selects */
 input[type="text"],
-select, /* Added select here */
-.annotation-label-select {
-    /* Keep specific class for potential overrides */
+input[type="file"],
+select,
+.annotation-label-select,
+.dataset-select,
+.split-select {
     flex: 1;
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--border-primary);
     border-radius: var(--border-radius-md);
-    background-color: var(--bg-primary); /* Darker input background */
+    background-color: var(--bg-primary);
     color: var(--text-primary);
     font-size: 0.9rem;
-    min-width: 0; /* Prevent flex item overflow */
+    min-width: 0;
     transition:
         border-color 0.2s ease,
         background-color 0.2s ease;
 }
+
 input[type="text"]:focus,
-select:focus, /* Added select here */
-.annotation-label-select:focus {
+select:focus,
+.annotation-label-select:focus,
+.dataset-select:focus,
+.split-select:focus {
     outline: none;
     border-color: var(--border-focus);
-    background-color: var(--bg-secondary); /* Slightly lighter on focus */
+    background-color: var(--bg-secondary);
+}
+
+input[type="file"] {
+    display: none;
 }
 
 .label-input input[type="text"] {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
-    border-right: none; /* Connect to button */
+    border-right: none;
 }
 
 .label-input button {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    /* Use default button styles, they fit well */
 }
 
 .labels-list,
 .annotations-list {
-    background-color: var(--bg-primary); /* Match darker background */
+    background-color: var(--bg-primary);
     border-radius: var(--border-radius-md);
     border: 1px solid var(--border-primary);
-    max-height: 250px; /* Increased max-height slightly */
+    max-height: 250px;
     overflow-y: auto;
-    /* Add subtle scrollbar styling (optional, webkit only) */
     scrollbar-width: thin;
     scrollbar-color: var(--border-secondary) var(--bg-secondary);
 }
+
 .labels-list::-webkit-scrollbar,
 .annotations-list::-webkit-scrollbar {
     width: 8px;
 }
+
 .labels-list::-webkit-scrollbar-track,
 .annotations-list::-webkit-scrollbar-track {
     background: var(--bg-secondary);
     border-radius: var(--border-radius-md);
 }
+
 .labels-list::-webkit-scrollbar-thumb,
 .annotations-list::-webkit-scrollbar-thumb {
     background-color: var(--border-secondary);
@@ -369,9 +418,10 @@ select:focus, /* Added select here */
     gap: calc(var(--spacing-unit) * 0.5);
     transition: background-color 0.15s ease;
 }
+
 .label-item:hover,
 .annotation-item:hover {
-    background-color: var(--bg-tertiary); /* Subtle hover */
+    background-color: var(--bg-tertiary);
 }
 
 .label-item:last-child,
@@ -379,25 +429,23 @@ select:focus, /* Added select here */
     border-bottom: none;
 }
 
-/* Delete buttons within lists */
 .delete-label-btn,
 .delete-annotation-btn {
     padding: 0.2rem 0.4rem;
     font-size: 0.8em;
     line-height: 1;
-    background-color: transparent; /* Make them less prominent */
+    background-color: transparent;
     color: var(--danger-primary);
-    border: 1px solid transparent; /* Add border for consistent size */
+    border: 1px solid transparent;
     border-radius: var(--border-radius-sm);
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
 }
+
 .delete-label-btn:hover,
 .delete-annotation-btn:hover {
-    background-color: hsla(
-        from var(--danger-primary) h s l / 0.1
-    ); /* Use hsla for alpha */
+    background-color: rgba(224, 108, 117, 0.1);
     color: var(--danger-hover);
-    border-color: hsla(from var(--danger-primary) h s l / 0.3);
+    border-color: rgba(224, 108, 117, 0.3);
 }
 
 .label-color {
@@ -408,14 +456,12 @@ select:focus, /* Added select here */
     margin-right: 8px;
     vertical-align: middle;
     flex-shrink: 0;
-    border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border for light colors */
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Label name / Select dropdown container */
 .label-item > div:first-child {
-    /* Target the div containing the color span and name */
     flex-grow: 1;
-    min-width: 0; /* Prevent overflow */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -423,19 +469,12 @@ select:focus, /* Added select here */
 }
 
 .annotation-item > select {
-    /* Target the select directly */
     flex-grow: 1;
-    min-width: 0; /* Prevent overflow */
-    /* Inherits base select styles */
-    padding: 0.3rem 0.6rem; /* Smaller padding for list item */
+    min-width: 0;
+    padding: 0.3rem 0.6rem;
     font-size: 0.85em;
-    /* Let flexbox handle width, no need for max-width: 100% typically */
 }
 
-/* Style select dropdown in annotation list (already covered by general select styling) */
-/* .annotation-label-select { } */
-
-/* Style for placeholder text in lists */
 .labels-list p,
 .annotations-list p {
     color: var(--text-secondary);
@@ -443,4 +482,83 @@ select:focus, /* Added select here */
     padding: var(--spacing-unit);
     text-align: center;
     font-size: 0.9em;
+}
+
+/* --- Dataset Section Specific Styles --- */
+.dataset-section .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.dataset-section select {
+    width: 100%;
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 1200px) {
+    .sidebar {
+        width: 280px;
+    }
+    
+    .canvas-tools {
+        flex-direction: column;
+        align-items: stretch;
+        gap: calc(var(--spacing-unit) * 0.5);
+    }
+    
+    .canvas-tools-left,
+    .canvas-tools-center,
+    .canvas-tools-right {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .workspace {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        max-height: 300px;
+        order: 2;
+    }
+    
+    .canvas-container {
+        order: 1;
+        min-height: 400px;
+    }
+    
+    #image-info {
+        min-width: 120px;
+        max-width: 200px;
+        font-size: 0.8em;
+    }
+    
+    .btn {
+        padding: 0.4rem 0.7rem;
+        font-size: 0.8em;
+    }
+    
+    .navigation-controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.btn:disabled.loading {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.btn:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
 }

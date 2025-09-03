@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 18
+names: ['2x2', '2x4', '3-way Switch', 'Canlight', 'Ceiling Mounted Motion Sensor', 'Demo 2x2', 'Demo 2x4', 'Demo Canlight', 'EMG 2x2', 'EMG 2x4', 'EMG Canlight', 'Exit Sign', 'Line Voltage Switch', 'Linear', 'Low Voltage Controlls Switch', 'Occupancy Dimmer Switch', 'Occupancy Sensor', 'Pendant Light']
+
+roboflow:
+  workspace: robo-lwjah
+  project: large-imonx
+  version: 9
+  license: Private
+  url: https://universe.roboflow.com/robo-lwjah/large-imonx/dataset/9
